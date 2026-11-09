@@ -17,6 +17,8 @@ export interface PinStyle {
   war?: boolean;
   /** Dashed outline: founded this turn. */
   fresh?: boolean;
+  /** 0.17.0: Oxygen crisis badge (bottom-right, "O₂" on a red disc). */
+  o2Crisis?: boolean;
 }
 
 /** Short specialty codes for the badge (legend in the Rules tab / tooltip). */
@@ -132,6 +134,15 @@ export function drawPinHead(ctx: CanvasRenderingContext2D, size: number, p: PinS
     ctx.beginPath(); ctx.moveTo(sx - d, sy - d); ctx.lineTo(sx + d, sy + d); ctx.moveTo(sx + d, sy - d); ctx.lineTo(sx - d, sy + d); ctx.stroke();
     ctx.lineWidth = size * 0.016;
     ctx.beginPath(); ctx.moveTo(sx - d * 0.2, sy + d * 0.6); ctx.lineTo(sx - d * 0.8, sy); ctx.moveTo(sx + d * 0.2, sy + d * 0.6); ctx.lineTo(sx + d * 0.8, sy); ctx.stroke();
+  }
+  // Oxygen crisis (bottom-right): red disc, cyan ring, "O₂"
+  if (p.o2Crisis) {
+    const ox = c + R * 0.95, oy = c + R * 0.95, or = size * 0.11;
+    ctx.fillStyle = "#b91c1c"; ctx.strokeStyle = "#67e8f9"; ctx.lineWidth = size * 0.02;
+    ctx.beginPath(); ctx.arc(ox, oy, or, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = `800 ${Math.round(or * 0.95)}px system-ui, sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("O₂", ox, oy + or * 0.06);
   }
   ctx.restore();
 }

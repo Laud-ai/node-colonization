@@ -1,4 +1,5 @@
-import { applyRules, ruleNum, type Rules } from "./rules.js";
+import { applyRules, ruleNum, ruleOn, type Rules } from "./rules.js";
+import { clockTrips, survivalNeed, survivalCover, freePopulation, coveredPopulationNeed } from "./l4.js";
 import type { FlagDesign } from "./flagDesign.js";
 import { flagForColony, flagForEarth } from "./flagLineage.js";
 import { needsTree, listSuppliers, type TreeNode, type Supplier } from "./needs.js";
@@ -92,6 +93,11 @@ export interface ColonySnap {
   fervor: number; liegeId: string | null; independent: boolean; canFoundIndependent: boolean;
   nationColor: string; nationRp: number;
   foodClock: number; waterClock: number; oxygenClock: number;
+  /** 0.17.0: turns of grace per clock + cover read-out ("2 Pop, 1 Water"). */
+  clockTrips: { food: number; water: number; oxygen: number };
+  survival: { scaled: boolean; pop: number; freePop: number; food: [number, number]; water: [number, number]; oxygen: [number, number] };
+  /** 0.17.0 hook: Oxygen crisis + colonies with spare Oxygen not sending any. */
+  oxygenCrisis: { since: number; shortfall: number; suppliers: { name: string; body: string; surplus: number }[] } | null;
   populationStress: number; hasMilitaryToken: boolean; bodyLivable: boolean;
   projectsDone: string[]; projectActive: string | null; projectProgress: number;
   /** 0.13.1 pin alerts (UI read-only). */
@@ -325,6 +331,18 @@ function snapColony(G: GameState, c: Colony, actingId: string | null): ColonySna
     foodClock: c.foodClock || 0,
     waterClock: c.waterClock || 0,
     oxygenClock: c.oxygenClock || 0,
+    clockTrips: clockTrips(G),
+    survival: {
+      scaled: !!G.rules && ruleOn(G, "survivalScaledCover"),
+      pop: coveredPopulationNeed(c), freePop: freePopulation(c),
+      food: [survivalNeed(G, c, "Food"), survivalCover(c, "Food")],
+      water: [survivalNeed(G, c, "Water"), survivalCover(c, "Water")],
+      oxygen: [survivalNeed(G, c, "Oxygen"), survivalCover(c, "Oxygen")],
+    },
+    oxygenCrisis: c.oxygenCrisis
+      ? { since: c.oxygenCrisis.since, shortfall: c.oxygenCrisis.shortfall,
+          suppliers: c.oxygenCrisis.suppliers.map((s) => ({ name: s.name, body: s.body, surplus: s.surplus })) }
+      : null,
     populationStress: c.populationStress || 0,
     hasMilitaryToken: hasInvasionToken(c),
     bodyLivable: (G.bodyTF[c.body] || 0) >= 10,

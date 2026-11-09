@@ -24,6 +24,8 @@ export interface GlobeMarker {
   /** 0.13.1 pin fields. */
   independent: boolean; fervor: number | null; specialty: NodeType;
   alert: boolean; war: boolean; fresh: boolean;
+  /** 0.17.0 Oxygen crisis badge. */
+  o2Crisis?: boolean;
   /** 0.15.2 the colony's own flag (small-mode SVG), shown on the pin as its primary identity. */
   flagSvg?: string;
 }
@@ -326,7 +328,7 @@ export class GlobeView {
     for (const m of markers) {
       const sel = m.id === selectedId;
       const key = [this.style, clampLevel(m.level), m.color, sel, m.independent, m.fervor === null ? "-" : Math.round(m.fervor * 20),
-        m.specialty, m.alert, m.war, m.fresh, m.lat.toFixed(3), m.lon.toFixed(3), m.flagSvg ?? ""].join("|");
+        m.specialty, m.alert, m.war, m.fresh, m.o2Crisis ? 1 : 0, m.lat.toFixed(3), m.lon.toFixed(3), m.flagSvg ?? ""].join("|");
       const old = this.pins.get(m.id);
       if (old && old.key === key) { old.m = m; continue; }
       if (old) this.dispose(old, m.id);
@@ -415,7 +417,7 @@ export class GlobeView {
     foot.quaternion.setFromUnitVectors(OUT, n);
     const tex = this.canvasTex(PIN_HEAD_PX, (ctx) => drawPinHead(ctx, PIN_HEAD_PX, {
       level: m.level, color: m.color, independent: m.independent, fervor: m.fervor,
-      specialty: m.specialty, selected: sel, war: m.war, fresh: m.fresh,
+      specialty: m.specialty, selected: sel, war: m.war, fresh: m.fresh, o2Crisis: m.o2Crisis,
     }));
     const headMat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, depthTest: false, transparent: true });
     const head = new THREE.Sprite(headMat);

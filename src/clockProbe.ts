@@ -1,22 +1,23 @@
 // 0.16.0 survival-clock probe: npm run sim:clocks -- [turns] [seeds]
 // Modes: legacy (pre-0.9.4: no G.rules), legacyPop (pre-0.9.4 balance + 0.16.0 clock rule),
-//        v094 (0.9.4–0.15.x shipped rules), v016 (0.16.0 rules)
+//        v094 (0.9.4–0.15.x shipped rules), v016 (0.16.0 rules), v017 (0.17.0 scaled cover + O₂ deaths)
 import { mulberry32 } from "./rng.js";
 import { applyRules, legacyRules } from "./rules.js";
 import { createGame, runTurn } from "./engine.js";
 import type { ClockTraceEntry } from "./l4.js";
 const turns = Number(process.argv[2] || 120);
 const seeds = (process.argv[3] || "42,7,99").split(",").map(Number);
-const modes = (process.env.MODES || "legacy,legacyPop,v094,v016").split(",");
+const modes = (process.env.MODES || "legacy,legacyPop,v094,v016,v017").split(",");
 for (const mode of modes) {
-  const tot = { adv: 0, advNoDevPop: 0, advStrainOnly: 0, fired: 0, firedNoDevPop: 0, refugees: 0, cols: 0 };
+  const tot = { adv: 0, advNoDevPop: 0, advStrainOnly: 0, fired: 0, firedNoDevPop: 0, refugees: 0, cols: 0, deaths: 0 };
   for (const seed of seeds) {
     const rng = mulberry32(seed);
     const G = createGame(seed, rng);
-    if (mode === "v094") applyRules(G, { survivalNeedsPopulation: false });
-    if (mode === "v016") applyRules(G);
+    if (mode === "v094") applyRules(G, { survivalNeedsPopulation: false, survivalScaledCover: false });
+    if (mode === "v016") applyRules(G, { survivalScaledCover: false });
+    if (mode === "v017") applyRules(G);
     // Pre-0.9.4 balance (trip 3, no cooldown/recovery) but with Tiago's clock rule
-    if (mode === "legacyPop") applyRules(G, { ...legacyRules(), survivalNeedsPopulation: true });
+    if (mode === "legacyPop") applyRules(G, { ...legacyRules(), survivalNeedsPopulation: true, survivalScaledCover: false });
     const trace: ClockTraceEntry[] = [];
     (G as unknown as { __clockTrace: ClockTraceEntry[] }).__clockTrace = trace;
     for (let t = 1; t <= turns; t++) runTurn(G, rng);
@@ -28,7 +29,8 @@ for (const mode of modes) {
     }
     tot.refugees += G.log.filter((e) => /🏕 Refugees flee/.test(e.msg)).length;
     tot.cols += G.colonies.length;
+    for (const e of G.log) { const m = /☠ (\d+) Population died/.exec(e.msg); if (m) tot.deaths += Number(m[1]); }
   }
   const n = seeds.length;
-  console.log(`${mode.padEnd(9)} seeds ${seeds.join(",")} T${turns}: clock advances ${tot.adv} (without native Population ${tot.advNoDevPop} = ${tot.adv ? Math.round((100 * tot.advNoDevPop) / tot.adv) : 0}%; at zero strain ${tot.advStrainOnly}) · refugee events ${tot.refugees} (${(tot.refugees / n / turns).toFixed(2)}/turn/seed; ${tot.firedNoDevPop} of ${tot.fired} from colonies without native Population) · colonies at end ${(tot.cols / n).toFixed(1)}/seed`);
+  console.log(`${mode.padEnd(9)} seeds ${seeds.join(",")} T${turns}: clock advances ${tot.adv} (without native Population ${tot.advNoDevPop} = ${tot.adv ? Math.round((100 * tot.advNoDevPop) / tot.adv) : 0}%; at zero strain ${tot.advStrainOnly}) · refugee events ${tot.refugees} (${(tot.refugees / n / turns).toFixed(2)}/turn/seed; ${tot.firedNoDevPop} of ${tot.fired} from colonies without native Population) · O₂ deaths ${tot.deaths} · colonies at end ${(tot.cols / n).toFixed(1)}/seed`);
 }

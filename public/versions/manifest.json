@@ -1,6 +1,13 @@
 {
-  "live": "0.16.0",
+  "live": "0.17.0",
   "versions": [
+    {
+      "version": "0.17.0",
+      "summary": "Scaled survival cover, Tiago's 3/2/1 clocks, Oxygen kills",
+      "available": true,
+      "date": "2026-11-09",
+      "path": "versions/0.17.0/index.html"
+    },
     {
       "version": "0.16.0",
       "summary": "Survival clocks belong to a colony's own Population",

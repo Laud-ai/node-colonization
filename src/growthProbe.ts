@@ -9,7 +9,7 @@ const fv = process.argv[4];
 for (const seed of seeds) {
   const rng = mulberry32(seed);
   const G = createGame(seed, rng);
-  if (process.env.LEGACY !== "1") applyRules(G, process.env.CLOCKS_OLD === "1" ? { survivalNeedsPopulation: false } : {});
+  if (process.env.LEGACY !== "1") applyRules(G, process.env.CLOCKS === "094" ? { survivalNeedsPopulation: false, survivalScaledCover: false } : process.env.CLOCKS === "016" ? { survivalScaledCover: false } : {});
   if (fv) applyFervorParams(G, variantById(fv)!.params);
   const at: Record<number, number> = {};
   for (let t = 1; t <= turns; t++) { runTurn(G, rng); if ([10, 40, 80, 120, 150].includes(t)) at[t] = G.colonies.length; }
@@ -19,8 +19,10 @@ for (const seed of seeds) {
   console.log(`  overturns ${ov.map((e) => `T${e.turn}`).join(",") || "-"} proxy ${G.log.filter((e) => /🕵 Proxy/.test(e.msg)).length}`);
   const ref = G.log.filter((e) => /🏕 Refugees flee/.test(e.msg)).length;
   const rev = G.log.filter((e) => /⚑ REVOLUTION:/.test(e.msg));
+  let deaths = 0;
+  for (const e of G.log) { const m = /☠ (\d+) Population died/.exec(e.msg); if (m) deaths += Number(m[1]); }
   const ind = G.colonies.filter((c) => isIndependent(c)).length;
   const bodies: Record<string, number> = {};
   for (const c of G.colonies) bodies[c.body] = (bodies[c.body] || 0) + 1;
-  console.log(`seed ${seed}: cols ${JSON.stringify(at)} refugees ${ref} (${(ref / turns).toFixed(2)}/t) revolts ${rev.length} first ${rev[0]?.turn ?? "-"} indep ${ind}/${G.colonies.length} ${JSON.stringify(bodies)}`);
+  console.log(`seed ${seed}: cols ${JSON.stringify(at)} refugees ${ref} (${(ref / turns).toFixed(2)}/t) O2deaths ${deaths} revolts ${rev.length} first ${rev[0]?.turn ?? "-"} indep ${ind}/${G.colonies.length} ${JSON.stringify(bodies)}`);
 }

@@ -98,6 +98,9 @@ export interface LogisticsLine {
   trojanSend?: { targetId: string; targetName: string } | null;
 }
 
+export interface OxygenSupplier { id: string; name: string; body: Body; surplus: number }
+export interface OxygenCrisis { since: number; shortfall: number; suppliers: OxygenSupplier[] }
+
 export interface Colony {
   id: string;
   name: string;
@@ -144,6 +147,11 @@ export interface Colony {
   foodClock?: number;
   waterClock?: number;
   oxygenClock?: number;
+  /**
+   * 0.17.0 hook (no AI yet): set while the Oxygen clock is running. `suppliers` = colonies with spare
+   * Oxygen that are not sending any to this colony — future casus belli / blackmail targets.
+   */
+  oxygenCrisis?: OxygenCrisis | null;
   /** L4: Population stress when refugees flee with no Population extra. */
   populationStress?: number;
   /** 0.9.4 last refugee emission turn (per-colony cooldown). */

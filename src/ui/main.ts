@@ -326,15 +326,16 @@ function renderGlobes(snap: UiSnapshot): void {
     const fresh = c.foundedTurn === snap.turn && snap.turn > 1;
     const alerts: string[] = [];
     if (c.strain > 0) alerts.push(`strain ${c.strain}`);
-    if (c.foodClock > 0) alerts.push(`food clock ${c.foodClock}/${snap.clockTrip || 3}`);
-    if (c.waterClock > 0) alerts.push(`water clock ${c.waterClock}/${snap.clockTrip || 3}`);
-    if (c.oxygenClock > 0) alerts.push(`O₂ clock ${c.oxygenClock}/${snap.clockTrip || 3}`);
+    if (c.foodClock > 0) alerts.push(`food clock ${c.foodClock}/${c.clockTrips.food}`);
+    if (c.waterClock > 0) alerts.push(`water clock ${c.waterClock}/${c.clockTrips.water}`);
+    if (c.oxygenClock > 0) alerts.push(`O₂ clock ${c.oxygenClock}/${c.clockTrips.oxygen}`);
+    if (c.oxygenCrisis) alerts.push(`O₂ CRISIS — ${c.oxygenCrisis.suppliers.length} colon${c.oxygenCrisis.suppliers.length === 1 ? "y" : "ies"} with spare O₂ not trading`);
     if (c.atWar) alerts.push(c.proxyAgitation > 0 ? `proxy war (agitation ${c.proxyAgitation})` : "invasion");
     if (fresh) alerts.push("founded this turn");
     by[c.body].push({
       id: c.id, lat: site.lat, lon: site.lon, level: c.level, color: c.nationColor || "#64748b",
       independent: c.independent, fervor: c.independent ? null : Math.max(0, c.fervor) / thr,
-      specialty: c.specialty, alert: need, war: c.atWar, fresh,
+      specialty: c.specialty, alert: need, war: c.atWar, fresh, o2Crisis: !!c.oxygenCrisis,
       flagSvg: flagDesignToSvg(c.flag, 30, 20),
       info: [
         c.name,
@@ -437,9 +438,10 @@ function renderColonies(snap: UiSnapshot): void {
       ? `<div class="tags">Independent · liege ${esc(c.liegeId || "—")}${c.canFoundIndependent ? " · can found" : ""}</div>`
       : `<div class="tags need">Fervor ${c.fervor}</div>`;
     const clockBits: string[] = [];
-    if (c.foodClock > 0) clockBits.push(`food⏱${c.foodClock}`);
-    if (c.waterClock > 0) clockBits.push(`water⏱${c.waterClock}`);
-    if (c.oxygenClock > 0) clockBits.push(`O₂⏱${c.oxygenClock}`);
+    if (c.foodClock > 0) clockBits.push(`food⏱${c.foodClock}/${c.clockTrips.food}`);
+    if (c.waterClock > 0) clockBits.push(`water⏱${c.waterClock}/${c.clockTrips.water}`);
+    if (c.oxygenClock > 0) clockBits.push(`O₂⏱${c.oxygenClock}/${c.clockTrips.oxygen}`);
+    if (c.oxygenCrisis) clockBits.push("O₂ CRISIS");
     if (c.hasMilitaryToken) clockBits.push("⚔Mil");
     const clockLine = clockBits.length ? `<div class="tags need">${clockBits.map(esc).join(" · ")}</div>` : "";
     const nc = c.nationColor || "#64748b";
@@ -505,15 +507,24 @@ function renderDetail(snap: UiSnapshot): void {
     ? `<div class="tags">Independent · liege ${esc(sel.liegeId || "—")}</div>`
     : `<div class="tags need">Fervor ${sel.fervor}</div>`;
   const clockDetailBits: string[] = [];
-  const trip = snap.clockTrip || 3;
-  if (sel.foodClock > 0) clockDetailBits.push(`Food clock ${sel.foodClock}/${trip} (no Food)`);
-  if (sel.waterClock > 0) clockDetailBits.push(`Water clock ${sel.waterClock}/${trip} (no Water)`);
-  if (sel.oxygenClock > 0) clockDetailBits.push(`Oxygen clock ${sel.oxygenClock}/${trip} (no Oxygen)`);
+  const sv = sel.survival, tr = sel.clockTrips;
+  const why = (r: "Food" | "Water" | "Oxygen", v: [number, number]) =>
+    sv.scaled ? `(${sv.pop} Pop, ${v[1]} ${r})` : `(no ${r})`;
+  if (sel.foodClock > 0) clockDetailBits.push(`Food clock ${sel.foodClock}/${tr.food} ${why("Food", sv.food)}`);
+  if (sel.waterClock > 0) clockDetailBits.push(`Water clock ${sel.waterClock}/${tr.water} ${why("Water", sv.water)}`);
+  if (sel.oxygenClock > 0) clockDetailBits.push(`Oxygen clock ${sel.oxygenClock}/${tr.oxygen} ${why("Oxygen", sv.oxygen)}`);
+  if (sv.scaled && sv.freePop) clockDetailBits.push("+1 free specialty Population");
   if (sel.populationStress > 0) clockDetailBits.push(`Pop stress ${sel.populationStress}`);
   if (sel.hasMilitaryToken) clockDetailBits.push("Invasion token ready");
   if (sel.bodyLivable) clockDetailBits.push("Body livable (TF≥10)");
-  const clockDetail = clockDetailBits.length
-    ? `<div class="tags need">${clockDetailBits.map(esc).join(" · ")}</div>` : "";
+  const crisis = sel.oxygenCrisis;
+  const crisisDetail = crisis
+    ? `<div class="tags need o2-crisis" data-o2-crisis="1">☠ Oxygen crisis since T${crisis.since} — short ${crisis.shortfall}; Population dies next short turn. `
+      + (crisis.suppliers.length
+        ? `Spare O₂ not trading: ${crisis.suppliers.map((s) => `${esc(s.name)} (${esc(s.body)}, +${s.surplus})`).join(", ")}`
+        : "No colony has spare O₂.") + `</div>` : "";
+  const clockDetail = (clockDetailBits.length
+    ? `<div class="tags need">${clockDetailBits.map(esc).join(" · ")}</div>` : "") + crisisDetail;
   el.innerHTML = `
     <div class="tags"><button type="button" data-open-needs>🌳 Needs tree &amp; suppliers</button></div>
     <div class="detail-head">

@@ -107,7 +107,9 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   expect(await page.locator("#needsTree .nt-node").count()).toBe(19);
   await needsWin.screenshot({ path: path.join(smokeDir, "needs-tree.png") });
   await needsWin.screenshot({ path: path.join(smokeDir, "needs-tree-midgame.png") });
-  await page.locator('#needsTree .nt-node[data-state="missing"]').first().click();
+  // Click a red (missing) node if the selected colony has one this run, else a grey expansion (0.17.0: game state varies with rules)
+  const missingNode = page.locator('#needsTree .nt-node[data-state="missing"]');
+  await ((await missingNode.count()) ? missingNode.first() : page.locator('#needsTree .nt-node[data-state="expand"]').first()).click();
   const supWin = page.locator('.win[data-win="suppliers"]');
   await expect(supWin).toBeVisible();
   await expect(page.locator("#suppliers .sup-head")).toContainText("choices");

@@ -4,8 +4,8 @@ import { ruleNum, ruleOn } from "./rules.js";
  * editable independence threshold.
  */
 import type { Rng } from "./rng.js";
-import { extras, strainOf, rp, freeLines, activeImportCount } from "./nodes.js";
-import type { Body, Colony, GameState, NodeType } from "./types.js";
+import { extras, strainOf, rp, freeLines, activeImportCount, DEPS } from "./nodes.js";
+import type { Body, Colony, GameState, NodeType, OxygenSupplier } from "./types.js";
 import {
   FERVOR_THRESHOLD,
   INDEPENDENT_PATRON,
@@ -306,6 +306,7 @@ export function ensureClocks(c: Colony): void {
  */
 export function tickSurvivalClocks(G: GameState, c: Colony, rng: Rng): void {
   ensureClocks(c);
+  if (G.rules && ruleOn(G, "survivalScaledCover")) { tickScaledClocks(G, c, rng); return; }
   // 0.16.0 (Tiago): clocks belong to a native Population, not to strain.
   const popRule = !!G.rules && ruleOn(G, "survivalNeedsPopulation");
   if (!popRule && strainOf(c) <= 0) return; // 0.9.x–0.15.x gate: any strain
@@ -349,6 +350,109 @@ export function tickSurvivalClocks(G: GameState, c: Colony, rng: Rng): void {
       c.oxygenClock = 0;
     }
   }
+}
+
+// ── 0.17.0 (Tiago): scaled cover, per-resource clocks, Oxygen deaths ─────────────────────────
+
+export const SURVIVAL_RESOURCES = ["Food", "Water", "Oxygen"] as const;
+export type SurvivalResource = (typeof SURVIVAL_RESOURCES)[number];
+const CLOCK_OF: Record<SurvivalResource, SurvivalClockKind> = { Food: "food", Water: "water", Oxygen: "oxygen" };
+
+/** Population that needs cover: developed only (a Population specialty is free, imports need nothing). */
+export function coveredPopulationNeed(c: Colony): number {
+  return Math.max(0, c.developed.Population || 0);
+}
+/** The free specialty Population (0.17.0): counts as Population, needs no Food/Water/Oxygen. */
+export function freePopulation(c: Colony): number {
+  return c.specialty === "Population" ? 1 : 0;
+}
+/** Units of Food/Water/Oxygen the colony needs this turn (Oxygen: none on a livable body). */
+export function survivalNeed(G: GameState, c: Colony, r: SurvivalResource): number {
+  if (r === "Oxygen" && isBodyLivable(G, c.body)) return 0;
+  return coveredPopulationNeed(c);
+}
+/** Owned (developed + specialty) + imported units. */
+export function survivalCover(c: Colony, r: SurvivalResource): number {
+  return Math.max(0, extras(c, r));
+}
+export function survivalShortfall(G: GameState, c: Colony, r: SurvivalResource): number {
+  return Math.max(0, survivalNeed(G, c, r) - survivalCover(c, r));
+}
+/** 0.17.0 turns of grace per clock. */
+export function clockTrips(G: GameState): Record<SurvivalClockKind, number> {
+  if (G.rules && ruleOn(G, "survivalScaledCover")) {
+    return { food: ruleNum(G, "clockTripFood"), water: ruleNum(G, "clockTripWater"), oxygen: ruleNum(G, "clockTripOxygen") };
+  }
+  const t = G.rules ? ruleNum(G, "refugeeClockTrip") : SURVIVAL_CLOCK_TRIP;
+  return { food: t, water: t, oxygen: t };
+}
+/** Stability halves clock speed only if ≥ half of its prerequisites are owned or imported (Tiago 0.17.0). */
+export function stabilityBacked(c: Colony): boolean {
+  if (!hasHealth(c)) return false;
+  const reqs = DEPS.Stability || [];
+  const filled = reqs.filter((n) => extras(c, n) > 0).length;
+  return filled * 2 >= reqs.length;
+}
+
+/** Colonies with spare Oxygen that are not sending any to `c` (sorted: same body, surplus, name). */
+export function oxygenSuppliersNotTrading(G: GameState, c: Colony): OxygenSupplier[] {
+  const sending = new Set(c.logisticsLines
+    .filter((l) => l.route && l.route.node === "Oxygen" && l.route.sourceKind === "colony")
+    .map((l) => l.route!.sourceId));
+  return G.colonies
+    .filter((o) => o.id !== c.id && !sending.has(o.id))
+    .map((o) => ({ id: o.id, name: o.name, body: o.body, surplus: survivalCover(o, "Oxygen") - survivalNeed(G, o, "Oxygen") }))
+    .filter((o) => o.surplus > 0)
+    .sort((a, b) => (Number(b.body === c.body) - Number(a.body === c.body)) || (b.surplus - a.surplus) || a.name.localeCompare(b.name))
+    .slice(0, 6);
+}
+
+function tickScaledClocks(G: GameState, c: Colony, rng: Rng): void {
+  if (stabilityBacked(c) && G.turn % 2 === 0) { updateOxygenCrisis(G, c); return; }
+  const trips = clockTrips(G);
+  const recover = ruleOn(G, "refugeeClockRecovery");
+  const trace = (G as unknown as { __clockTrace?: ClockTraceEntry[] }).__clockTrace;
+  const key = { food: "foodClock", water: "waterClock", oxygen: "oxygenClock" } as const;
+  for (const r of SURVIVAL_RESOURCES) {
+    const k = CLOCK_OF[r];
+    const short = survivalShortfall(G, c, r);
+    const cur = c[key[k]] || 0;
+    if (short <= 0) {
+      if (cur > 0) c[key[k]] = recover ? cur - 1 : cur;
+      continue;
+    }
+    const entry = () => ({ turn: G.turn, colony: c.id, kind: k, devPop: hasNativePopulation(c) ? 1 : 0, totalPop: extras(c, "Population"), strain: strainOf(c) });
+    if (cur >= trips[k]) {
+      trace?.push({ ...entry(), fired: true });
+      if (r === "Oxygen") oxygenDeaths(G, c, short);
+      else { emitRefugees(G, c, k, rng); c.lastRefugeeTurn = G.turn; }
+      c[key[k]] = 0;
+    } else {
+      c[key[k]] = cur + 1;
+      trace?.push({ ...entry(), fired: false });
+    }
+  }
+  updateOxygenCrisis(G, c);
+}
+
+/** Oxygen fires: the uncovered developed Population dies (no migration). */
+export function oxygenDeaths(G: GameState, c: Colony, shortfall: number): number {
+  const dead = Math.min(shortfall, c.developed.Population || 0);
+  if (dead <= 0) return 0;
+  c.developed.Population -= dead;
+  deps().pushLog(G, `☠ ${dead} Population died in ${c.name} (no Oxygen).`, true);
+  G.turnAnnouncements.push(`${dead} Population died in ${c.name} — no Oxygen.`);
+  return dead;
+}
+
+function updateOxygenCrisis(G: GameState, c: Colony): void {
+  if ((c.oxygenClock || 0) > 0 && survivalShortfall(G, c, "Oxygen") > 0) {
+    c.oxygenCrisis = {
+      since: c.oxygenCrisis?.since ?? G.turn,
+      shortfall: survivalShortfall(G, c, "Oxygen"),
+      suppliers: oxygenSuppliersNotTrading(G, c),
+    };
+  } else if (c.oxygenCrisis) c.oxygenCrisis = null;
 }
 
 function reducePopulationOrStress(G: GameState, c: Colony, rng: Rng): void {
