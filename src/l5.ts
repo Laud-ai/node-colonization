@@ -19,6 +19,7 @@ export function thrustOf(c: Colony): number {
 /** Alternative Mars reach (adds to the lunar-basis gate): any same-nation colony with Thrust. */
 export function hasThrustReach(G: GameState, patron: string, liegeId?: string | null): boolean {
   if (!G.rules || !ruleOn(G, "l5Thrust")) return false;
+  if (ruleOn(G, "marsFoundingMoonAlly")) return false; // 0.18.0: Thrust no longer opens Mars (asteroids later)
   return G.colonies.some((c) => (c.patron === patron || (liegeId && c.liegeId === liegeId)) && thrustOf(c) >= 1);
 }
 
@@ -54,7 +55,7 @@ function completeProject(G: GameState, c: Colony, p: ProjectName, pushLog: (G: G
   c.projectActive = undefined;
   c.projectProgress = 0;
   let effect = "";
-  if (p === "Orbital Shipyard") effect = "+1 Thrust (independent reach)";
+  if (p === "Orbital Shipyard") effect = G.rules && ruleOn(G, "marsFoundingMoonAlly") ? "+1 Thrust" : "+1 Thrust (independent reach)";
   else if (p === "Terraforming Megaproject") { G.bodyTF[c.body] = (G.bodyTF[c.body] || 0) + 2; effect = `${c.body} TF +2`; }
   else if (p === "Earth-Independent Supply Chain") {
     const f = ruleNum(G, "projectFervor");

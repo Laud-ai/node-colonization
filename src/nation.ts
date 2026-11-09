@@ -1,5 +1,5 @@
 import { hasThrustReach } from "./l5.js";
-import { ruleNum } from "./rules.js";
+import { ruleNum, ruleOn } from "./rules.js";
 /**
  * 0.8.0 — Nation identity: Earth blocs + Independent liege groups as nations/agents.
  * Colonies are cities in that nation (shared nationColor). Nation RP = sum of member colony RP.
@@ -308,6 +308,19 @@ export function hasLunarAllyFeed(
   return false;
 }
 
+/**
+ * 0.18.0 (Tiago): any Moon colony of the founder's nation or a same-alliance (West/East) nation.
+ * Neutral blocs and Independents (liege nation) count only their own nation.
+ */
+export function hasFriendlyMoonColony(G: GameState, patron: string, liegeId?: string | null): boolean {
+  if (patron === INDEPENDENT_PATRON) {
+    return !!liegeId && G.colonies.some((c) => c.body === "Moon" && c.patron === INDEPENDENT_PATRON && (c.liegeId || c.id) === liegeId);
+  }
+  const all = G.blocs.find((b) => b.name === patron)?.alliance;
+  return G.colonies.some((c) => c.body === "Moon" && (c.patron === patron
+    || (!!all && all !== "Neutral" && !isIndependent(c) && G.blocs.find((b) => b.name === c.patron)?.alliance === all)));
+}
+
 /** Mars founding allowed when strong lunar basis OR lunar ally feed. */
 export function canFoundMars(
   G: GameState,
@@ -315,6 +328,7 @@ export function canFoundMars(
   socialAffinity: SocialAffinityFn,
   liegeId?: string | null
 ): boolean {
+  if (G.rules && ruleOn(G, "marsFoundingMoonAlly")) return hasFriendlyMoonColony(G, patron, liegeId);
   return (
     hasThrustReach(G, patron, liegeId) ||
     hasStrongLunarBasis(G, patron, liegeId) ||

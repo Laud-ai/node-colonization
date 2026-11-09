@@ -76,6 +76,7 @@ import {
   invade, tickSurvivalClocks, emitRefugees, maybeAutoInvade, decayThreatTrack, threatLevel,
   ensureClocks, STATIONED_DEFENSE, TF_LIVABLE, SURVIVAL_CLOCK_TRIP, EARTH_THREAT_KEY,
   DEFAULT_INDEPENDENCE_THRESHOLD, INVADE_DESTROY_PRIORITY, annexColony,
+  SURVIVAL_RESOURCES, survivalShortfall,
 } from "./l4.js";
 
 export const TIER: Record<string, number> = {
@@ -435,14 +436,19 @@ export function tryRecallLentLine(G: GameState, actor: Colony, rng: Rng): boolea
     ? earthTradeAllowed(G, actor, s.bloc, s.node, CULTURES, IDEOLOGIES, socialAffinity, consentsExport)
     : !!pickExportLine(s.colony, actor) && !(s.node === "Subversion" && !shouldAcceptEnemySubversion(G, actor, s)));
   if (!reqSources.length || freeLines(actor).some((l) => reqSources.some((s) => lineCanServeTrade(l, actor, s)))) return false;
-  const gap = ruleNum(G, "aiSpreadGap");
+  // 0.18.0 aiLendAllies (anti-hoarding): any bigger ally returns a line it only uses for a no-longer-critical route
+  const allyMode = !!G.rules && ruleOn(G, "aiLendAllies");
+  const gap = allyMode ? 1 : ruleNum(G, "aiSpreadGap");
   for (const own of actor.logisticsLines) {
     if (!own.lentTo) continue;
     const b = G.colonies.find((c) => c.id === own.lentTo);
     if (!b || colonyLevel(b) < colonyLevel(actor) + gap) continue;
+    if (allyMode && !friendlyColonies(G, actor, b)) continue;
     const borrowed = b.logisticsLines.find((l) => l.kind === "borrowed" && l.borrowedFrom?.colonyId === actor.id && l.borrowedFrom.lineId === own.id);
     if (!borrowed) continue;
-    if (borrowed.route && (borrowed.route.vital || isVitalNeed(b, borrowed.route.node))) continue;
+    if (borrowed.route && (allyMode
+      ? isVitalNeed(b, borrowed.route.node) || borrowed.route.node === b.requires
+      : borrowed.route.vital || isVitalNeed(b, borrowed.route.node))) continue;
     if (borrowed.exportRoute != null) continue;
     if (!reqSources.some((s) => lineCanServeTrade({ ...own, lentTo: null }, actor, s))) continue;
     if (borrowed.route) clearRouteOnLine(G, b, borrowed, rng, true);
@@ -450,6 +456,41 @@ export function tryRecallLentLine(G: GameState, actor: Colony, rng: Rng): boolea
       pushLog(G, `${actor.name} takes back its logistics line from ${b.name} to develop.`, true);
       return true;
     }
+  }
+  return false;
+}
+
+/** Friendly Earth blocs for filling: own sovereign, same alliance, Neutral (rank ≤ −16; Independents by affinity). */
+function friendlyEarthSlots(G: GameState, actor: Colony): { b: EarthBloc; i: number; open: number }[] {
+  if (marsEarthless(G, actor)) return [];
+  const out: { b: EarthBloc; i: number; open: number }[] = [];
+  for (const b of G.blocs) {
+    const open = b.excess.filter((x) => x.claimedBy === null).length;
+    b.excess.forEach((slot, i) => {
+      if (slot.claimedBy !== null || slot.node === "Logistics") return;
+      const src: TradeSource = { kind: "earth", bloc: b, node: slot.node, slotIndex: i };
+      if (rankSource(G, actor, src) > -16) return;
+      if (!earthTradeAllowed(G, actor, b, slot.node, CULTURES, IDEOLOGIES, socialAffinity, consentsExport)) return;
+      out.push({ b, i, open });
+    });
+  }
+  return out.sort((x, y) => x.open - y.open || x.b.name.localeCompare(y.b.name) || x.i - y.i);
+}
+/** 0.18.0: claim (and keep) an unclaimed slot of a friendly Earth bloc on a free own line — the bloc closest to unlocking first. */
+export function tryFillFriendlyEarth(G: GameState, actor: Colony, rng: Rng): boolean {
+  const free = freeLines(actor).filter((l) => l.kind !== "borrowed" && !l.lentTo);
+  if (!free.length) return false;
+  for (const { b, i } of friendlyEarthSlots(G, actor)) {
+    const slot = b.excess[i]!;
+    const src: TradeSource = { kind: "earth", bloc: b, node: slot.node, slotIndex: i };
+    const line = free.find((l) => lineCanServeTrade(l, actor, src));
+    if (!line) continue;
+    if (!claimEarthSlot(G, actor, b, i, slot.node, rng)) continue;
+    line.route = makeRoute(src);
+    applyRouteStartEffects(G, actor, src, rng);
+    pushLog(G, `${actor.name} fills ${b.name}'s Earth slot (${slot.node}) to unlock more excess.`, true);
+    afterColonyAction(G, actor, rng);
+    return true;
   }
   return false;
 }
@@ -467,6 +508,7 @@ export function tryImportLogisticsForCapacity(G: GameState, actor: Colony, rng: 
  * filling first — a full bloc develops a new excess slot.
  */
 export function tryCoopEarthUnlock(G: GameState, actor: Colony, rng: Rng): boolean {
+  if (marsEarthless(G, actor)) return false;
   const friendlyEarth = (s: TradeSource) => s.kind === "earth" && rankSource(G, actor, s) <= -16;
   const lines = occupiedLines(actor).filter((l) => {
     const r = l.route!;
@@ -661,6 +703,7 @@ function validateTradeSource(
   G: GameState, actor: Colony, source: TradeSource, reclaimLineId?: string
 ): boolean {
   if (source.kind === "earth") {
+    if (marsEarthless(G, actor)) return false;
     const slot = source.bloc.excess[source.slotIndex];
     if (!slot || slot.node !== source.node || slot.claimedBy !== null) return false;
     return earthTradeAllowed(
@@ -830,7 +873,20 @@ export function lendableLines(c: Colony): LogisticsLine[] {
   );
 }
 
-export type LenderPick = { colony: Colony; line: LogisticsLine; affinity: number };
+export type LenderPick = { colony: Colony; line: LogisticsLine; affinity: number; clearRoute?: boolean };
+
+/** West vs East (Earth-aligned colonies only). */
+export function opponentColonies(G: GameState, a: Colony, b: Colony): boolean {
+  const x = patronAllianceOf(G, a), y = patronAllianceOf(G, b);
+  return (x === "West" && y === "East") || (x === "East" && y === "West");
+}
+/** 0.18.0 non-critical lines a bigger ally may hand over: cycling probes first, then non-vital imports. */
+function hoardedLines(c: Colony): LogisticsLine[] {
+  const ok = (l: LogisticsLine) => l.kind !== "borrowed" && !l.lentTo && l.exportRoute == null && !l.trojanExport && !l.trojanSend
+    && !!l.route && !l.route.vital && !isVitalNeed(c, l.route.node) && l.route.node !== c.requires;
+  const lines = c.logisticsLines.filter(ok);
+  return [...lines.filter((l) => l.route!.earthCycle), ...lines.filter((l) => !l.route!.earthCycle)];
+}
 
 /** Pick highest-affinity assisting colony with a free lendable line. */
 export function pickBestLender(G: GameState, borrower: Colony, forSource?: TradeSource, minLenderLevel = 0): LenderPick | null {
@@ -838,14 +894,25 @@ export function pickBestLender(G: GameState, borrower: Colony, forSource?: Trade
   for (const c of G.colonies) {
     if (c.id === borrower.id) continue;
     if (minLenderLevel > 0 && colonyLevel(c) < minLenderLevel) continue;
-    if (!assistsColony(G, c, borrower) && !sameNation(c, borrower)) continue;
-    const lines = lendableLines(c);
+    const allyMode = !!G.rules && ruleOn(G, "aiLendAllies");
+    const ally = allyMode && friendlyColonies(G, c, borrower);
+    if (allyMode && opponentColonies(G, c, borrower)) continue; // always refuse opponents
+    if (!ally && !assistsColony(G, c, borrower) && !sameNation(c, borrower)) continue;
+    let lines = lendableLines(c);
+    let clearRoute = false;
+    // 0.18.0 anti-hoarding: a bigger ally hands over a cycling / non-critical line to a smaller ally with no line
+    if (!lines.length && ally && colonyLevel(c) > colonyLevel(borrower) && freeLines(borrower).length === 0) {
+      lines = hoardedLines(c); clearRoute = true;
+    }
+    // 0.18.0: an ally lends on request, but never the last free line it needs for its own Requires this turn
+    if (allyMode && !clearRoute && !c.acted && lines.length === 1 && c.requires !== "Logistics"
+      && findSources(G, c, c.requires).some((s) => lineCanServeTrade(lines[0]!, c, s))) continue;
     if (!lines.length) continue;
     for (const line of lines) {
       if (forSource && !lineCanServeTrade(line, borrower, forSource)) continue;
       const aff = socialAffinity(G, c, borrower);
       const nationBonus = sameNation(c, borrower) ? 10 : 0;
-      cands.push({ colony: c, line, affinity: aff + nationBonus });
+      cands.push({ colony: c, line, affinity: aff + nationBonus + (ally ? 5 : 0) - (clearRoute ? 20 : 0), clearRoute });
       break; // one line per lender
     }
   }
@@ -860,8 +927,12 @@ export function lendLogisticsLine(
 ): LogisticsLine | null {
   const line = findLine(lender, lenderLineId);
   if (!line || line.route !== null || line.exportRoute != null || line.lentTo || line.kind === "borrowed") return null;
-  if (!assistsColony(G, lender, borrower) && !sameBloc(lender, borrower)) return null;
+  const allyMode = !!G.rules && ruleOn(G, "aiLendAllies");
+  if (allyMode && opponentColonies(G, lender, borrower)) return null;
+  if (!assistsColony(G, lender, borrower) && !sameBloc(lender, borrower) && !(allyMode && friendlyColonies(G, lender, borrower))) return null;
   line.lentTo = borrower.id;
+  (G as unknown as { __lendTrace?: { turn: number; from: string; to: string }[] }).__lendTrace
+    ?.push({ turn: G.turn, from: lender.body, to: borrower.body });
   const borrowed: LogisticsLine = {
     id: allocLineId(borrower),
     name: `via [${lender.name}] Logistics`,
@@ -1050,6 +1121,8 @@ export function importLogistics(G: GameState, actor: Colony, source: TradeSource
   // Mars needs Earth-sourced logistics for Earth reach — importing from Earth is always allowed by reach on the new line itself
   const label = sourceLabel(source);
   const newId = allocLineId(actor);
+  (G as unknown as { __logiTrace?: { turn: number; kind: string; body: string }[] }).__logiTrace
+    ?.push({ turn: G.turn, kind: source.kind, body: actor.body });
   if (source.kind === "earth") {
     if (!claimEarthSlot(G, actor, source.bloc, source.slotIndex, "Logistics", rng)) return false;
   } else {
@@ -1099,9 +1172,14 @@ export function cancelLogisticsImport(G: GameState, actor: Colony, lineId: strin
 }
 
 /** Raw sources (availability only; no East/West or Subversion filters). */
+/** 0.18.0 `marsMoonOnlyImports`: Mars colonies never trade with Earth directly. */
+export function marsEarthless(G: GameState, c: Colony): boolean {
+  return c.body === "Mars" && !!G.rules && ruleOn(G, "marsMoonOnlyImports");
+}
+
 export function findSourcesRaw(G: GameState, actor: Colony, node: NodeType): TradeSource[] {
   const out: TradeSource[] = [];
-  for (const b of G.blocs) {
+  if (!marsEarthless(G, actor)) for (const b of G.blocs) {
     const idx = findUnclaimedSlot(b, node);
     if (idx >= 0) out.push({ kind: "earth", bloc: b, node, slotIndex: idx });
   }
@@ -1201,6 +1279,7 @@ export function cancelEarthCycleRoutes(G: GameState, actor: Colony, rng: Rng): n
 
 /** Probe-import a non-vital Earth excess to drive slot fill → new excess unlock (0.8.2). */
 export function tryEarthCycle(G: GameState, actor: Colony, rng: Rng): boolean {
+  if (marsEarthless(G, actor)) return false;
   if (actor.logisticsLines.some((l) => l.route?.earthCycle)) return false;
   const free = freeLines(actor).filter((l) => l.kind !== "borrowed" && !l.lentTo);
   if (!free.length) return false;
@@ -1283,6 +1362,9 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
   // 0.8.2: cancel prior-turn earthCycle probes so Earth excess rerolls
   cancelEarthCycleRoutes(G, actor, rng);
   const spread = !!G.rules && ruleOn(G, "aiSpreadDevelop");
+  const lendAllies = !!G.rules && ruleOn(G, "aiLendAllies");
+  const loop = !!G.rules && ruleOn(G, "aiLogisticsLoop");
+  const earthless = marsEarthless(G, actor);
   const active = !!G.rules && ruleOn(G, "aiActiveEarth");
   /** Requires sources minus those left to smaller friends (aiSpreadDevelop). */
   const sourcesFor = (node: NodeType): TradeSource[] => {
@@ -1295,7 +1377,7 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
     if (node === "Logistics") {
       let sources = findSources(G, actor, "Logistics");
       // Mars needs Earth-sourced Logistics for Earth reach — ignore Moon/Mars Logistics here
-      if (actor.body === "Mars" && !hasEarthReach(actor)) {
+      if (actor.body === "Mars" && !hasEarthReach(actor) && !earthless) {
         sources = sources.filter((s) => s.kind === "earth");
       }
       const best = pickBestSource(G, actor, sources);
@@ -1309,9 +1391,13 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
     if (free.length) return startRoute(G, actor, free[0]!.id, best, rng);
     // No free lines: one reach-aware lend attempt max
     if ((actor.lendAttemptsThisTurn || 0) >= 1) return false;
-    // 0.17.1 spread: never borrow from a colony ≥ gap levels smaller (it needs the line to develop)
+    // 0.17.1 spread: never *ask* a colony ≥ gap levels smaller for a line (anti-hoarding, 0.18.0: lenders still always lend to allies who ask)
     const lender = pickBestLender(G, actor, best, spread ? colonyLevel(actor) - ruleNum(G, "aiSpreadGap") + 1 : 0);
     if (!lender) return false;
+    if (lender.clearRoute && lender.line.route) {
+      pushLog(G, `${lender.colony.name} frees ${lender.line.name} (${lender.line.route.node}) for ally ${actor.name}.`, true);
+      clearRouteOnLine(G, lender.colony, lender.line, rng, true);
+    }
     return startRouteWithLend(G, actor, lender.colony.id, lender.line.id, best, rng);
   };
   const trySwitch = (node: NodeType): boolean => {
@@ -1328,7 +1414,7 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
   const needNodes = (): NodeType[] => {
     const out: NodeType[] = [];
     // 0.8.1: Mars without Earth reach — Logistics (Earth) first so Needs can be filled
-    if (actor.body === "Mars" && !hasEarthReach(actor)) {
+    if (actor.body === "Mars" && !hasEarthReach(actor) && !earthless) {
       out.push("Logistics");
     }
     out.push(actor.requires);
@@ -1343,10 +1429,14 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
         if (!out.includes(d)) out.push(d);
       }
     }
+    // 0.18.0: scaled survival shortfalls are critical needs too (Population > cover)
+    if (loop && G.rules && ruleOn(G, "survivalScaledCover")) {
+      for (const r of SURVIVAL_RESOURCES) if (survivalShortfall(G, actor, r) > 0 && !out.includes(r)) out.push(r);
+    }
     return out;
   };
-  // 0) Mars unlock: prefer Earth-sourced Logistics before anything else
-  if (actor.body === "Mars" && !hasEarthReach(actor)) {
+  // 0) Mars unlock: prefer Earth-sourced Logistics before anything else (not with 0.18.0 Moon-only Mars)
+  if (actor.body === "Mars" && !hasEarthReach(actor) && !earthless) {
     const earthLog = findSources(G, actor, "Logistics").filter((s) => s.kind === "earth");
     if (earthLog.length) {
       const best = pickBestSource(G, actor, earthLog);
@@ -1354,7 +1444,7 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
     }
   }
   // 0a) 0.17.1 spread: take back a line lent to a much bigger colony (non-vital use) if it lets us develop
-  if (spread) tryRecallLentLine(G, actor, rng);
+  if (spread || lendAllies) tryRecallLentLine(G, actor, rng);
   // 0b) 0.17.1 spread: a much bigger colony first helps a smaller friend develop from its own surplus
   if (spread && tryFeedFriendRequires(G, actor, rng, colonyLevel(actor) - ruleNum(G, "aiSpreadGap"))) return;
   // 1) Fill Requires / missing basals / strained deps — never pass if sourcable
@@ -1408,6 +1498,15 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
   }
   // Intra-nation feed before pass (0.8.1)
   if (tryFeedHungrySibling(G, actor, rng)) return;
+  // 0.18.0 Logistics loop (Tiago): Earth Logistics (+1 line, kept) → keep cycling → fill friendly Earth blocs
+  if (loop) {
+    if (tryImportLogisticsForCapacity(G, actor, rng)) return;
+    // spare lines (≥ 2 free: one stays free for cycling) fill friendly blocs; otherwise keep cycling
+    const ownFree = freeLines(actor).filter((l) => l.kind !== "borrowed" && !l.lentTo).length;
+    if (ownFree >= 2 && tryFillFriendlyEarth(G, actor, rng)) return;
+    if (tryEarthCycle(G, actor, rng)) return;
+    if (tryFillFriendlyEarth(G, actor, rng)) return;
+  }
   // 0.8.2: Earth probe cycle when free logistics + no urgent Earth Need left
   if (tryEarthCycle(G, actor, rng)) return;
   // L4 rare invade (Military token + hostile same-body)
@@ -1613,6 +1712,11 @@ function flushFoundings(G: GameState): void {
 
 export function startTurn(G: GameState, rng: Rng): void {
   pushLog(G, `— Turn ${G.turn} —`, true);
+  // 0.18.0 (Tiago): the British Commonwealth starts Neutral (rules are applied after createGame)
+  if (G.turn === 1 && G.rules && ruleOn(G, "bcNeutral")) {
+    const bc = blocByName(G, "British Commonwealth");
+    if (bc && bc.alliance === "West") bc.alliance = "Neutral";
+  }
   flushFoundings(G);
   earthSpontaneous(G, rng);
 }

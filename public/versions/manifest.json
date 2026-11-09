@@ -1,6 +1,13 @@
 {
-  "live": "0.17.1",
+  "live": "0.18.0",
   "versions": [
+    {
+      "version": "0.18.0",
+      "summary": "Neutral Commonwealth, Moon-fed Mars, ally lending, the Logistics loop",
+      "available": true,
+      "date": "2026-11-09",
+      "path": "versions/0.18.0/index.html"
+    },
     {
       "version": "0.17.1",
       "summary": "Fewer passes: RP turn order, develops spread to smaller colonies, colonies work Earth",

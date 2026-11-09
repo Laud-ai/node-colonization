@@ -5,9 +5,15 @@ import { applyRules } from "./rules.js";
 import { createGame, runTurn, type PassDiag } from "./engine.js";
 const turns = Number(process.argv[2] || 120);
 const seeds = (process.argv[3] || "42,7,99,123,5").split(",").map(Number);
+const OFF018 = { bcNeutral: false, marsFoundingMoonAlly: false, marsMoonOnlyImports: false, aiLendAllies: false, aiLogisticsLoop: false };
 const PATCHES: Record<string, Record<string, boolean | number>> = {
-  v0170: { aiTurnOrderRp: false, aiSpreadDevelop: false, aiActiveEarth: false },
-  v0171: {},
+  v0170: { aiTurnOrderRp: false, aiSpreadDevelop: false, aiActiveEarth: false, ...OFF018 },
+  v0171: { ...OFF018 },
+  v0180: {},
+  noLoop: { aiLogisticsLoop: false },
+  noLend: { aiLendAllies: false },
+  noMars: { marsFoundingMoonAlly: false, marsMoonOnlyImports: false },
+  noBC: { bcNeutral: false },
 };
 const modes = (process.env.MODES || "v0170").split(",");
 const verbose = process.env.VERBOSE === "1";
@@ -27,6 +33,9 @@ for (const mode of modes) {
   let coop = 0, allyFeed = 0, reqSwitch = 0;
   let orderPairs = 0, orderDesc = 0, firstIsTop = 0, turnsCounted = 0;
   const devByLvl: Record<string, number> = {};
+  const marsActs = [0, 0]; let marsDevs = 0;
+  let logiEarth = 0, logiCol = 0, moonMarsLends = 0, lends = 0, mars = 0, refugees = 0, o2 = 0;
+  const firstMars: number[] = [];
   let devs = 0, giniSum = 0, topShareSum = 0, cyclesN = 0, unlocks = 0, revolts = 0, cols = 0;
   for (const seed of seeds) {
     const rng = mulberry32(seed);
@@ -35,7 +44,8 @@ for (const mode of modes) {
     const at: { turn: number; id: string; rp: number; level: number; patron?: string }[] = [];
     const pt: PassDiag[] = [];
     const dt: { turn: number; id: string; level: number; patron: string }[] = [];
-    Object.assign(G, { __actTrace: at, __passTrace: pt, __devTrace: dt });
+    const lt: { turn: number; from: string; to: string }[] = [], gt: { kind: string }[] = [];
+    Object.assign(G, { __actTrace: at, __passTrace: pt, __devTrace: dt, __lendTrace: lt, __logiTrace: gt });
     for (let t = 1; t <= turns; t++) runTurn(G, rng);
     const passKey = new Set(pt.map((p) => `${p.turn}|${p.id}`));
     const patronOf = new Map(G.colonies.map((c) => [c.id, c.patron]));
@@ -60,6 +70,9 @@ for (const mode of modes) {
       for (let i = 1; i < list.length; i++) { orderPairs++; if (list[i - 1]!.rp >= list[i]!.rp) orderDesc++; }
       if (list[0]!.rp >= Math.max(...list.map((x) => x.rp))) firstIsTop++;
     }
+    const bodyOf = new Map(G.colonies.map((c) => [c.id, c.body]));
+    for (const a of at) if (bodyOf.get(a.id) === "Mars") { marsActs[0]++; if (passKey.has(`${a.turn}|${a.id}`)) marsActs[1]++; }
+    marsDevs += dt.filter((d) => bodyOf.get(d.id) === "Mars").length;
     devs += dt.length;
     for (const d of dt) inc(devByLvl, lvlB(d.level));
     const per = new Map<string, number>(); for (const d of dt) per.set(d.id, (per.get(d.id) || 0) + 1);
@@ -71,6 +84,14 @@ for (const mode of modes) {
     unlocks += G.log.filter((e) => /develops new free excess/.test(e.msg)).length;
     revolts += G.log.filter((e) => /⚑ REVOLUTION:/.test(e.msg)).length;
     cols += G.colonies.length;
+    lends += lt.length; moonMarsLends += lt.filter((x) => x.from === "Moon" && x.to === "Mars").length;
+    logiEarth += gt.filter((x) => x.kind === "earth").length; logiCol += gt.filter((x) => x.kind !== "earth").length;
+    mars += G.colonies.filter((c) => c.body === "Mars").length;
+    const fm = G.log.find((e) => /found.*on Mars|Mars.*found/i.test(e.msg) && !/cannot|blocked/i.test(e.msg));
+    const fmc = Math.min(...G.colonies.filter((c) => c.body === "Mars").map((c) => c.foundedTurn ?? 999), fm?.turn ?? 999);
+    firstMars.push(fmc);
+    refugees += G.log.filter((e) => /🏕 Refugees flee/.test(e.msg)).length;
+    for (const e of G.log) { const m = /☠ (\d+) Population died/.exec(e.msg); if (m) o2 += Number(m[1]); }
   }
   const n = seeds.length, pct = (a: number, b: number) => (b ? ((100 * a) / b).toFixed(1) : "0") + "%";
   const fmt = (o: Record<string, [number, number]>) => Object.entries(o).sort().map(([k, [a, p]]) => `${k} ${pct(p, a)} (${p}/${a})`).join(" · ");
@@ -85,5 +106,6 @@ for (const mode of modes) {
   console.log(`turn order: ${pct(orderDesc, orderPairs)} adjacent pairs highest→lowest RP · first actor is top RP in ${pct(firstIsTop, turnsCounted)} of turns`);
   console.log(`develops ${devs} (${(devs / n).toFixed(1)}/seed) by level: ${Object.entries(devByLvl).sort().map(([k, v]) => `${k} ${v}`).join(" · ")} · Gini ${(giniSum / n).toFixed(2)} · top colony share ${(100 * topShareSum / n).toFixed(1)}%`);
   console.log(`  develops per colony action by level: ${Object.entries(byLvl).sort().map(([k, [a]]) => `${k} ${pct(devByLvl[k] || 0, a)}`).join(" · ")}`);
+  console.log(`Logistics imports ${(logiEarth / n).toFixed(1)} Earth + ${(logiCol / n).toFixed(1)} colony /seed · lends ${(lends / n).toFixed(1)}/seed (Moon→Mars ${(moonMarsLends / n).toFixed(1)}) · Mars colonies at end ${(mars / n).toFixed(1)}/seed · first Mars founding T ${firstMars.map((t) => (t >= 999 ? "never" : t)).join(",")} · Mars pass rate ${pct(marsActs[1], marsActs[0])} · Mars develops ${(marsDevs / n).toFixed(1)}/seed · refugee waves ${refugees} · O₂ deaths ${o2}`);
   console.log(`earth cycles ${(cyclesN / n).toFixed(1)}/seed · earth unlocks ${(unlocks / n).toFixed(1)}/seed · revolutions ${revolts} · colonies ${(cols / n).toFixed(1)}/seed`);
 }

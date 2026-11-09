@@ -7,7 +7,7 @@ import type { Alliance, Body, Colony, EarthBloc, GameState, LogisticsLine, NodeT
 import { DEPS, NODES, extras, stackedDepNeeds, strainOf, missingDepsOf, freeLines, occupiedLines } from "./nodes.js";
 import { BASAL_NODES, isIndependent } from "./l3.js";
 import {
-  consentsExport, findSources, listMoves, moveKey, patronAllianceOf,
+  consentsExport, findSources, listMoves, marsEarthless, moveKey, patronAllianceOf,
   rankTradeSource, socialAffinity, tradeSourceKey, type PlayerMove, type TradeSource,
 } from "./engine.js";
 import { lineCanServeTrade } from "./trade.js";
@@ -237,7 +237,8 @@ export function listSuppliers(G: GameState, actor: Colony, node: NodeType | null
       const scope = location === actor.body ? "regional" : "outer";
       const blocks: string[] = [];
       const anyReach = actor.logisticsLines.some((l) => !l.lentTo && lineCanServeTrade(l, actor, s));
-      if (n !== "Logistics" && !anyReach) {
+      if (s.kind === "earth" && marsEarthless(G, actor)) blocks.push("Mars trades only with Moon colonies (0.18.0)");
+      else if (n !== "Logistics" && !anyReach) {
         blocks.push(location === "Earth" && actor.body === "Mars" ? "Earth→Mars needs an Earth-reach line" : `no line with ${location}→${actor.body} reach`);
       }
       if (s.kind === "colony" && !consentsExport(G, s.colony, actor, n)) blocks.push("supplier will not export to you (rival / low affinity)");
