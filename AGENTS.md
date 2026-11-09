@@ -2,6 +2,9 @@
 
 Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.12.0** (L7).
 
+**Live (GitHub Pages):** https://laud-ai.github.io/node-colonization/  
+**Repo:** https://github.com/Laud-ai/node-colonization
+
 ## Authority
 
 - **Tiago's hand-play rules and clarifications are authoritative.** Prefer them over any NOTES, PLAN, or prior agent assumption when they conflict.
@@ -29,6 +32,8 @@ npm run snapshot -- --manifest  # regenerate manifest only from NOTES-*.md
 
 Write `NOTES-x.y.z.md` (first line = title) before snapshotting. Unavailable older builds stay listed with `available: false`.
 
+Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under GitHub Pages at `/node-colonization/versions/<ver>/`. The live app builds with `base: "/node-colonization/"`; local `npm run dev` stays at `/`.
+
 ## Architecture map
 
 | Path | Role |
@@ -42,6 +47,7 @@ Write `NOTES-x.y.z.md` (first line = title) before snapshotting. Unavailable old
 | `src/ui/main.ts` + `index.html` | Lobby + play UI |
 | `scripts/snapshot.mjs` | Frozen version builds |
 | `tests/*.test.ts` | Node test suite (`npm test`) |
+| `.github/workflows/pages.yml` | CI test + build + GitHub Pages deploy |
 
 Sims (no rebuild needed between runs): `npm run sim`, `sim:fervor`, `sim:solar`, `sim:growth -- <turns> <seeds> [variant]`.
 
@@ -53,7 +59,7 @@ npm run build
 npm run smoke
 ```
 
-`smoke` builds, serves via Vite preview, and click-throughs the lobby (tabs → begin → end turn → version iframe). Screenshot: `out/smoke/smoke.png`.
+`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → version iframe). Screenshot: `out/smoke/smoke.png`.
 
 ## Release steps
 
@@ -61,9 +67,10 @@ npm run smoke
 2. Write `NOTES-x.y.z.md` (Space Game decisions).
 3. `npm run snapshot` (and confirm Version tab lists it).
 4. `npm test && npm run build && npm run smoke`.
-5. `git add -A && git commit -m "…" && git tag vX.Y.Z` (local tags; no remote required).
-6. Optional tarball for Tiago's PC: `tar -czf out/node-colonization-l0-X.Y.Z.tar.gz` (exclude `node_modules`; tarballs are gitignored).
+5. `git add -A && git commit -m "…" && git tag vX.Y.Z`.
+6. `git push origin main --tags` — push to **main** triggers `.github/workflows/pages.yml`, which runs tests, builds with base `/node-colonization/`, and deploys to GitHub Pages (https://laud-ai.github.io/node-colonization/).
+7. Optional tarball for Tiago's PC: `tar -czf out/node-colonization-l0-X.Y.Z.tar.gz` (exclude `node_modules`; tarballs are gitignored).
 
 ## Git
 
-Local-only repo. Tags mark frozen points (`v0.12.0` = baseline L7). Prefer small commits after each playable change.
+Remote: `Laud-ai/node-colonization` (public). Default branch **main**. Tags mark frozen points (`v0.12.0` = baseline L7). Prefer small commits after each playable change.

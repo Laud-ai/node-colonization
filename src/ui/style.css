@@ -740,6 +740,7 @@ th {
 }
 .setup-tab-panel[hidden] { display: none !important; }
 #snapshotOverlay[hidden] { display: none !important; }
+#snapshotOverlay:not([hidden]) { display: flex; flex-direction: column; }
 /* L6 Solar Realist */
 .solar-map-card { margin: 8px 12px; padding: 6px; background: #14191e; border: 1px solid #2f3b45; }
 .solar-map circle[data-id] { cursor: pointer; }
