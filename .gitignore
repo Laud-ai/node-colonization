@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/*.tar.gz
+out/smoke/
+test-results/
+playwright-report/
+playwright/.cache/
+*.log
+.DS_Store

@@ -1,0 +1,24 @@
+{
+  "name": "node-colonization-l0",
+  "version": "0.12.0",
+  "private": true,
+  "type": "module",
+  "description": "Node Colonization — L0–L7: Projects/Thrust, Solar Realist flags & map, T3 geopolitics; rules/version lobby",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5174",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4174",
+    "sim": "tsx src/cli.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "sim:fervor": "tsx src/fervorSweep.ts",
+    "sim:solar": "tsx src/solarBlocSweep.ts",
+    "sim:growth": "tsx src/growthProbe.ts",
+    "snapshot": "node scripts/snapshot.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.4.3"
+  }
+}

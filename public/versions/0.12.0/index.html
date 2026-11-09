@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Node Colonization — CORE L0–L4 (0.9.3)</title>
+    <script type="module" crossorigin src="./assets/index-DOdSvjMv.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CzGpvXGc.css">
+  </head>
+  <body>
+    <!-- Pre-sim setup / lobby (0.9.3) -->
+    <div id="setupScreen" class="setup-screen">
+      <div class="setup-card">
+        <div class="setup-brand">
+          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.9.3</span></h1>
+          <p class="setup-blurb">
+            Pre-simulation lobby for <b>fervor</b> and <b>solar-bloc / diplomacy</b> experiments.
+            Pick presets on each tab, confirm the threshold, then begin. Defaults:
+            <b>realistic_survival</b> + <b>solar_realist</b>.
+          </p>
+        </div>
+
+        <div class="setup-tabs" role="tablist" aria-label="Setup categories">
+          <button type="button" class="setup-tab selected" data-setup-tab="fervor" role="tab" aria-selected="true">Fervor</button>
+          <button type="button" class="setup-tab" data-setup-tab="solar" role="tab" aria-selected="false">Solar / Blocs</button>
+          <button type="button" class="setup-tab" data-setup-tab="versions" role="tab" aria-selected="false">Version / Ruleset</button>
+          <button type="button" class="setup-tab" data-setup-tab="rules" role="tab" aria-selected="false">Rules</button>
+        </div>
+
+        <div id="setupTabFervor" class="setup-tab-panel" data-panel="fervor">
+          <div class="setup-section">
+            <h2>Fervor variant</h2>
+            <div id="fervorVariantButtons" class="variant-grid" role="group" aria-label="Fervor variants"></div>
+          </div>
+          <div class="setup-section setup-summary-panel">
+            <h2>Selected fervor</h2>
+            <div id="fervorVariantTitle" class="setup-variant-title">—</div>
+            <p id="fervorVariantSummary" class="setup-variant-summary">—</p>
+            <p id="fervorVariantKnobs" class="setup-variant-knobs tags">—</p>
+          </div>
+        </div>
+
+        <div id="setupTabSolar" class="setup-tab-panel" data-panel="solar" hidden>
+          <div class="setup-section">
+            <h2>Solar / diplomacy variant</h2>
+            <div id="solarVariantButtons" class="variant-grid" role="group" aria-label="Solar bloc variants"></div>
+          </div>
+          <div class="setup-section setup-summary-panel">
+            <h2>Selected solar / blocs</h2>
+            <div id="solarVariantTitle" class="setup-variant-title">—</div>
+            <p id="solarVariantSummary" class="setup-variant-summary">—</p>
+            <p id="solarVariantKnobs" class="setup-variant-knobs tags">—</p>
+          </div>
+        </div>
+
+        <div id="setupTabRules" class="setup-tab-panel" data-panel="rules" hidden>
+          <div class="setup-section">
+            <p class="setup-blurb">Rule flags for the live build. <button type="button" id="rulesDefault">Shipped defaults</button> <button type="button" id="rulesLegacy">Legacy (pre-0.9.4)</button></p>
+            <div id="rulesForm" class="rules-form"></div>
+          </div>
+        </div>
+
+        <div id="setupTabVersions" class="setup-tab-panel" data-panel="versions" hidden>
+          <div class="setup-section">
+            <p class="setup-blurb">Play any point in development. The live build (with these tabs) is the current version; older snapshots open frozen with their own rules.</p>
+            <div id="versionList" class="variant-grid">Loading…</div>
+          </div>
+        </div>
+
+        <div class="setup-controls">
+          <label class="inline" title="Seed for the new game (blank = random)">
+            Seed
+            <input id="setupSeed" type="text" placeholder="random" />
+          </label>
+          <label class="inline" title="Independence fervor threshold (set by preset; override before start)">
+            Indep. threshold
+            <input id="setupThreshold" type="number" min="1" max="99" value="10" />
+          </label>
+          <button class="good" id="btnBeginSim">Begin simulation</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="playScreen" class="play-screen" hidden>
+      <header>
+        <div class="brand">
+          <h1>NODE COLONIZATION <span class="badge">CORE / L4</span></h1>
+          <div class="meta">
+            Turn <b id="turn">1</b>
+            · Acting: <b id="acting">—</b>
+            · Phase: <b id="phase">Colony</b>
+            · Seed <b id="seed">—</b>
+            · Fervor <b id="fervorVariantLive">—</b> · Solar <b id="solarVariantLive">—</b>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button class="primary" id="btnAuto">Auto-resolve</button>
+          <button class="good" id="btnEnd">End turn</button>
+          <button id="btnFound" disabled>Found</button>
+          <span id="foundTaxHint" class="hint" hidden></span>
+          <label class="inline">
+            Simulate
+            <input id="simN" type="number" min="1" max="200" value="10" />
+          </label>
+          <button class="primary" id="btnSim">Simulate N</button>
+          <label class="inline">
+            Seed
+            <input id="seedInput" type="text" placeholder="random" />
+          </label>
+          <label class="inline" title="Fervor sum for independence revolt">
+            Indep. threshold
+            <input id="indepThreshold" type="number" min="1" max="99" value="10" />
+          </label>
+          <button class="danger" id="btnNew">New game…</button>
+        </div>
+      </header>
+
+      <div id="announcements" class="announcements" hidden></div>
+      <div id="solarMapCard" class="card solar-map-card" hidden><div id="solarMap"></div></div>
+
+      <main>
+        <section class="col left">
+          <div class="card">
+            <div id="leadingNation" class="tags" style="margin-bottom:8px" hidden></div>
+            <h2>Earth blocs</h2>
+            <div id="blocs"></div>
+          </div>
+          <div class="card">
+            <h2>Solar independents</h2>
+            <div id="independents"></div>
+          </div>
+        </section>
+
+        <section class="col center">
+          <div class="card grow">
+            <h2>Colonies <span class="sub">(highest RP acts first)</span></h2>
+            <div id="colonies"></div>
+          </div>
+          <div class="card">
+            <h2>Legal moves <span class="sub" id="movesActing"></span></h2>
+            <div id="logistics" class="logistics-panel"></div>
+            <div id="moves" class="moves"></div>
+            <p class="hint">
+              Open logistics lines carry <b>1 import + 1 export</b>. Reach: Earth lines = Earth↔Moon; Moon = hub; Mars = Moon↔Mars (no Earth). East↔West Earth trade only if vital+fair. Importing <b>Logistics</b> adds a line. End turn auto-passes, founding, alliance pressure, cleanup.
+            </p>
+          </div>
+        </section>
+
+        <section class="col right">
+          <div class="card">
+            <h2>Selected colony</h2>
+            <div id="detail">Select a colony.</div>
+          </div>
+          <div class="card grow">
+            <h2>Event log</h2>
+            <div id="log"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="snapshotOverlay" hidden style="position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column">
+    <div style="padding:6px 10px;background:#111;color:#ddd;display:flex;gap:12px;align-items:center">
+      <button type="button" id="snapshotBack">← Back to live lobby</button><span id="snapshotLabel"></span>
+    </div>
+    <iframe id="snapshotFrame" style="flex:1;border:0;width:100%" title="Version snapshot"></iframe>
+  </div>
+</body>
+</html>

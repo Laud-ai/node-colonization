@@ -1,0 +1,566 @@
+import { flagSvg, solarMapSvg } from "./flags.js";
+import {
+  GameSession,
+  randomSeed,
+  FERVOR_VARIANTS,
+  DEFAULT_VARIANT_ID,
+  variantById,
+  variantKnobLine,
+  SOLAR_BLOC_VARIANTS,
+  DEFAULT_SOLAR_VARIANT_ID,
+  solarVariantById,
+  solarVariantKnobLine,
+  RULE_DEFS,
+  defaultRules,
+  legacyRules,
+  type Rules,
+  type UiSnapshot,
+  type MoveOption,
+} from "../session.js";
+
+type UiPhase = "setup" | "playing";
+type SetupTab = "fervor" | "solar" | "versions" | "rules";
+let selectedRules: Rules = defaultRules();
+
+let uiPhase: UiPhase = "setup";
+let setupTab: SetupTab = "fervor";
+let selectedVariantId = DEFAULT_VARIANT_ID;
+let selectedSolarVariantId = DEFAULT_SOLAR_VARIANT_ID;
+/** Session exists only while playing (created on Begin). */
+let session: GameSession | null = null;
+
+const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+function esc(s: string): string {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function showPhase(phase: UiPhase): void {
+  uiPhase = phase;
+  const setup = $("setupScreen");
+  const play = $("playScreen");
+  if (phase === "setup") {
+    setup.hidden = false;
+    play.hidden = true;
+  } else {
+    setup.hidden = true;
+    play.hidden = false;
+  }
+}
+
+function renderSetupTabs(): void {
+  document.querySelectorAll<HTMLElement>("[data-setup-tab]").forEach((btn) => {
+    const id = btn.dataset.setupTab as SetupTab;
+    const on = id === setupTab;
+    btn.classList.toggle("selected", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  const fervorPanel = document.getElementById("setupTabFervor");
+  const solarPanel = document.getElementById("setupTabSolar");
+  if (fervorPanel) fervorPanel.hidden = setupTab !== "fervor";
+  if (solarPanel) solarPanel.hidden = setupTab !== "solar";
+  const verPanel = document.getElementById("setupTabVersions");
+  if (verPanel) verPanel.hidden = setupTab !== "versions";
+  if (setupTab === "versions") void renderVersions();
+  const rulesPanel = document.getElementById("setupTabRules");
+  if (rulesPanel) rulesPanel.hidden = setupTab !== "rules";
+  if (setupTab === "rules") renderRules();
+}
+
+function renderSetup(): void {
+  renderSetupTabs();
+
+  const grid = $("fervorVariantButtons");
+  grid.innerHTML = FERVOR_VARIANTS.map((v) => {
+    const sel = v.id === selectedVariantId ? " selected" : "";
+    const def = v.id === DEFAULT_VARIANT_ID ? ' <span class="variant-default">default</span>' : "";
+    return `<button type="button" class="variant-btn${sel}" data-variant="${esc(v.id)}">
+      <span class="variant-id">${esc(v.id)}${def}</span>
+      <span class="variant-label">${esc(v.label)}</span>
+    </button>`;
+  }).join("");
+
+  const v = variantById(selectedVariantId) ?? FERVOR_VARIANTS[0]!;
+  $("fervorVariantTitle").textContent = `${v.id} — ${v.label}`;
+  $("fervorVariantSummary").textContent = v.summary;
+  $("fervorVariantKnobs").textContent = variantKnobLine(v);
+
+  const solarGrid = document.getElementById("solarVariantButtons");
+  if (solarGrid) {
+    solarGrid.innerHTML = SOLAR_BLOC_VARIANTS.map((sv) => {
+      const sel = sv.id === selectedSolarVariantId ? " selected" : "";
+      const def = sv.id === DEFAULT_SOLAR_VARIANT_ID ? ' <span class="variant-default">default</span>' : "";
+      return `<button type="button" class="variant-btn${sel}" data-solar-variant="${esc(sv.id)}">
+        <span class="variant-id">${esc(sv.id)}${def}</span>
+        <span class="variant-label">${esc(sv.label)}</span>
+      </button>`;
+    }).join("");
+  }
+  const sv = solarVariantById(selectedSolarVariantId) ?? SOLAR_BLOC_VARIANTS[0]!;
+  const st = document.getElementById("solarVariantTitle");
+  const ss = document.getElementById("solarVariantSummary");
+  const sk = document.getElementById("solarVariantKnobs");
+  if (st) st.textContent = `${sv.id} — ${sv.label}`;
+  if (ss) ss.textContent = sv.summary;
+  if (sk) sk.textContent = solarVariantKnobLine(sv);
+
+  const thr = $("setupThreshold") as HTMLInputElement;
+  if (document.activeElement !== thr) thr.value = String(v.params.threshold);
+}
+
+function beginSimulation(): void {
+  const raw = ($("setupSeed") as HTMLInputElement).value.trim();
+  const seed = raw === "" ? randomSeed() : (Number(raw) >>> 0) || randomSeed();
+  ($("setupSeed") as HTMLInputElement).value = String(seed);
+  ($("seedInput") as HTMLInputElement).value = String(seed);
+
+  const thrRaw = Number(($("setupThreshold") as HTMLInputElement).value);
+  const thr = Number.isFinite(thrRaw) && thrRaw >= 1 ? Math.floor(thrRaw) : undefined;
+
+  session = GameSession.create(seed || 1, {
+    rules: { ...selectedRules },
+    variantId: selectedVariantId,
+    solarVariantId: selectedSolarVariantId,
+    independenceThreshold: thr,
+  });
+
+  const live = document.getElementById("fervorVariantLive");
+  if (live) live.textContent = session.fervorVariantId;
+  const liveSolar = document.getElementById("solarVariantLive");
+  if (liveSolar) liveSolar.textContent = session.solarVariantId;
+
+  showPhase("playing");
+  render();
+}
+
+function returnToSetup(): void {
+  session = null;
+  // Keep last selected variant + threshold for convenience
+  const thrEl = document.getElementById("indepThreshold") as HTMLInputElement | null;
+  if (thrEl) {
+    const n = Number(thrEl.value);
+    if (Number.isFinite(n) && n >= 1) ($("setupThreshold") as HTMLInputElement).value = String(Math.floor(n));
+  }
+  const seedPlay = ($("seedInput") as HTMLInputElement).value.trim();
+  if (seedPlay) ($("setupSeed") as HTMLInputElement).value = seedPlay;
+  showPhase("setup");
+  renderSetup();
+}
+
+function requireSession(): GameSession {
+  if (!session) throw new Error("No active session");
+  return session;
+}
+
+function render(): void {
+  if (uiPhase !== "playing" || !session) return;
+  const snap = session.snapshot();
+  $("turn").textContent = String(snap.turn);
+  $("seed").textContent = String(snap.seed);
+  $("phase").textContent = snap.phase;
+  $("acting").textContent = snap.actingName ?? "none — end turn";
+  const thrEl = document.getElementById("indepThreshold") as HTMLInputElement | null;
+  if (thrEl && document.activeElement !== thrEl) thrEl.value = String(snap.independenceThreshold ?? 10);
+  const live = document.getElementById("fervorVariantLive");
+  if (live) live.textContent = session.fervorVariantId;
+  const liveSolar = document.getElementById("solarVariantLive");
+  if (liveSolar) liveSolar.textContent = session.solarVariantId;
+  renderAnnouncements(snap);
+  const leadEl = document.getElementById("leadingNation");
+  if (leadEl) {
+    const parts: string[] = [];
+    if (snap.leadingNationLabel) parts.push(`Leading nation: ${snap.leadingNationLabel}`);
+    if ((snap.threatLevel || 0) > 0) parts.push(`West↔East threat ${snap.threatLevel}/3`);
+    leadEl.textContent = parts.join(" · ");
+    leadEl.hidden = parts.length === 0;
+  }
+  renderBlocs(snap);
+  renderIndependents(snap);
+  renderColonies(snap);
+  renderSolarMap(snap);
+  renderDetail(snap);
+  renderLogistics(snap);
+  renderMoves(snap);
+  renderLog(snap);
+  ($("btnAuto") as HTMLButtonElement).disabled = !snap.actingId;
+  const foundBtn = $("btnFound") as HTMLButtonElement;
+  foundBtn.disabled = !snap.canFound;
+  foundBtn.title = snap.foundingTaxHint ?? "No bloc eligible to found";
+  const taxEl = document.getElementById("foundTaxHint");
+  if (taxEl) {
+    taxEl.textContent = snap.canFound && snap.foundingTaxHint ? snap.foundingTaxHint : "";
+    (taxEl as HTMLElement).hidden = !(snap.canFound && snap.foundingTaxHint);
+  }
+}
+
+function renderAnnouncements(snap: UiSnapshot): void {
+  const el = $("announcements");
+  if (!snap.turnAnnouncements.length) { el.innerHTML = ""; el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = snap.turnAnnouncements.map((m) => `<div class="announce-banner">${esc(m)}</div>`).join("");
+}
+
+function renderBlocs(snap: UiSnapshot): void {
+  $("blocs").innerHTML = snap.blocs.map((b) => {
+    const chips = b.excess.map((s) => {
+      const cls = s.claimedBy ? "node-chip claimed" : "node-chip free";
+      const label = s.claimedBy ? `${esc(s.node)} → ${esc(s.claimedName || s.claimedBy)}` : esc(s.node);
+      return `<span class="${cls}"><span class="dot" style="background:${s.color}"></span>${label}</span>`;
+    }).join(" ");
+    let tech = b.activeColonial
+      ? `<span class="active-colonial">Active colonial player</span><div class="tags">founding tax ${b.foundingTax}</div>`
+      : `<div class="tags">tech ${b.tech}/${b.cap}</div><div class="tech-bar"><span style="width:${Math.min(100,(b.tech/Math.max(1,b.cap))*100)}%"></span></div>`;
+    const lead = b.leadingNation ? ' <span class="rp">leading nation</span>' : "";
+    return `<div class="bloc${b.activeColonial ? " active-bloc" : ""}" style="border-left:4px solid ${esc(b.nationColor)}">
+      <div class="name"><span class="dot" style="background:${esc(b.nationColor)};display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px"></span>${esc(b.name)} <span class="rp">${esc(b.alliance)}</span>${lead}</div>
+      <div class="tags">Nation RP: ${b.nationRp} · excess ${b.claimed}/${b.excessCount} · colonies ${b.colonies}</div>
+      ${tech}
+      <div class="tags" style="margin-top:6px">${chips || "—"}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderIndependents(snap: UiSnapshot): void {
+  const el = document.getElementById("independents");
+  if (!el) return;
+  if (!snap.independentGroups.length) {
+    el.innerHTML = `<div class="tags">No Independent networks yet.</div>`;
+    return;
+  }
+  el.innerHTML = snap.independentGroups.map((g) => {
+    const members = g.members.map((m) => esc(m)).join(", ");
+    const lead = g.leadingNation ? ' <span class="rp">leading nation</span>' : "";
+    const color = g.nationColor || "#94a3b8";
+    return `<div class="bloc" style="border-left:4px solid ${esc(color)}">
+      <div class="name"><span class="dot" style="background:${esc(color)};display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px"></span>${esc(g.liegeName)} <span class="rp">Independent</span>${lead}</div>
+      <div class="tags">Nation RP: ${g.nationRp ?? g.totalRp} · ${g.colonyCount} colonies</div>
+      <div class="tags" style="margin-top:6px">${members}</div>
+    </div>`;
+  }).join("");
+}
+
+function l6On(): boolean { return session?.state.rules?.l6Presentation !== false && !!session?.state.rules; }
+function renderSolarMap(snap: UiSnapshot): void {
+  const card = $("solarMapCard");
+  card.hidden = !l6On();
+  if (card.hidden) return;
+  $("solarMap").innerHTML = solarMapSvg(
+    snap.colonies.map((c) => ({ id: c.id, name: c.name, body: c.body, nationColor: c.nationColor || "#64748b", independent: c.independent, projects: c.projectsDone })),
+    snap.bodyTF as Record<string, number>, snap.selectedId);
+}
+function renderColonies(snap: UiSnapshot): void {
+  $("colonies").innerHTML = snap.colonies.map((c) => {
+    const classes = ["colony", c.isActing ? "active" : "", c.id === snap.selectedId ? "selected" : "", c.acted ? "acted-dim" : ""].filter(Boolean).join(" ");
+    const ideo = c.ideology.length ? c.ideology.map(esc).join(" / ") : "—";
+    const cult = c.culture.length ? c.culture.map(esc).join(" / ") : "—";
+    const blendNote = [...c.ideology, ...c.culture].some((t) => /hybrid|Eurasian|Atlantic|-/i.test(t))
+      ? '<div class="tags">blend noted</div>' : "";
+    const fervorLine = c.independent
+      ? `<div class="tags">Independent · liege ${esc(c.liegeId || "—")}${c.canFoundIndependent ? " · can found" : ""}</div>`
+      : `<div class="tags need">Fervor ${c.fervor}</div>`;
+    const clockBits: string[] = [];
+    if (c.foodClock > 0) clockBits.push(`food⏱${c.foodClock}`);
+    if (c.waterClock > 0) clockBits.push(`water⏱${c.waterClock}`);
+    if (c.oxygenClock > 0) clockBits.push(`O₂⏱${c.oxygenClock}`);
+    if (c.hasMilitaryToken) clockBits.push("⚔Mil");
+    const clockLine = clockBits.length ? `<div class="tags need">${clockBits.map(esc).join(" · ")}</div>` : "";
+    const nc = c.nationColor || "#64748b";
+    return `<div class="${classes}" data-id="${c.id}" style="border-left:4px solid ${esc(nc)}">
+      <div class="name">${l6On() ? flagSvg(c.name + "|" + c.culture.join("/") + "|" + (c.ideology[0] || ""), nc, 21, 14) + " " : `<span class="dot" style="background:${esc(nc)};display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px"></span>`}${esc(c.name)} <span class="rp">L${c.level}</span> <span class="rp">RP ${c.rp}</span></div>
+      <div class="tags">${c.body} · ${esc(c.patron)} · Nation RP ${c.nationRp} · ${c.specialty} · ${c.acted ? "acted" : "waiting"}</div>
+      <div class="tags need">Requires ${c.requires} · lines ${c.logiAvail}/${c.logiCap} (occ ${c.occupied}) · strain ${c.strain}</div>
+      ${fervorLine}
+      ${clockLine}
+      ${c.projectsDone.length || c.projectActive ? `<div class="tags">🏗 ${esc(c.projectsDone.join(", "))}${c.projectActive ? `${c.projectsDone.length ? " · " : ""}building ${esc(c.projectActive)} ${c.projectProgress}` : ""}</div>` : ""}
+      <div class="tags">Ideology: ${ideo}</div>
+      <div class="tags">Culture: ${cult}</div>
+      ${blendNote}
+    </div>`;
+  }).join("");
+}
+
+function renderLogistics(snap: UiSnapshot): void {
+  const el = $("logistics");
+  if (!el) return;
+  const c = snap.selected;
+  if (!c) { el.innerHTML = ""; return; }
+  const nc = c.nationColor || "#64748b";
+  el.innerHTML = `<div class="summary-title" style="border-left:4px solid ${esc(nc)};padding-left:8px">Logistics — ${esc(c.name)}</div>` +
+    c.lines.map((l) => {
+      const reach = l.reach ? ` [${esc(l.reach)}]` : "";
+      const vital = l.vital ? " vital" : "";
+      return `<div class="logi-line ${l.free ? "free" : "busy"}${vital}"><span>${esc(l.name)}${reach}${l.vital ? " · vital" : ""}</span><span>${esc(l.status)}</span></div>`;
+    }).join("");
+}
+
+function editableChip(label: string, kind: string, index: number, colonyId: string): string {
+  return `<span class="chip editable-chip" contenteditable="true" spellcheck="false"
+    data-edit="${kind}" data-index="${index}" data-colony="${esc(colonyId)}"
+    title="Edit · Enter or blur to save">${esc(label)}</span>`;
+}
+
+function renderDetail(snap: UiSnapshot): void {
+  const el = $("detail");
+  const sel = snap.selected;
+  if (!sel) { el.textContent = "Select a colony."; return; }
+  const group = (title: string, items: string[], cls: string) =>
+    `<div class="summary-group ${cls}"><div class="summary-title">${title}</div><div class="summary-items">${
+      items.length ? items.map((x) => `<span class="chip">${esc(x)}</span>`).join("") : '<span class="tags">—</span>'
+    }</div></div>`;
+  const rows = sel.nodes.map((n) => {
+    if (n.specialty) return `<tr><td>${n.node} ★ ◇</td><td>${n.extras}</td><td class="ok">specialty</td></tr>`;
+    const miss = n.missingDeps.length ? `needs ${n.missingDeps.join(", ")}` : (n.developed > 0 ? "ok" : "clean");
+    return `<tr><td>${n.node}${n.clean > 0 ? " ◇" : ""}</td><td>${n.extras}</td><td class="${n.covered ? "ok" : "bad"}">${miss}</td></tr>`;
+  }).join("");
+  const needsItems: string[] = [`Requires ${sel.requires}`];
+  for (const n of sel.summary.inUseStrained) {
+    const row = sel.nodes.find((x) => x.node === n);
+    const miss = row?.missingDeps ?? [];
+    if (miss.length) needsItems.push(`${n} missing ${miss.join(", ")}`);
+  }
+  const ideoChips = sel.ideology.map((t, i) => editableChip(t, "ideology", i, sel.id)).join("");
+  const importedChips = sel.ideologyImported.map((t, i) => editableChip(t, "ideologyImported", i, sel.id)).join("");
+  const cultChips = sel.culture.map((t, i) => editableChip(t, "culture", i, sel.id)).join("");
+  const developNote = sel.ideologyDevelopCount
+    ? `<span class="tags">developed×${sel.ideologyDevelopCount}</span>` : "";
+  const fervorDetail = sel.independent
+    ? `<div class="tags">Independent · liege ${esc(sel.liegeId || "—")}</div>`
+    : `<div class="tags need">Fervor ${sel.fervor}</div>`;
+  const clockDetailBits: string[] = [];
+  if (sel.foodClock > 0) clockDetailBits.push(`Food clock ${sel.foodClock}/3`);
+  if (sel.waterClock > 0) clockDetailBits.push(`Water clock ${sel.waterClock}/3`);
+  if (sel.oxygenClock > 0) clockDetailBits.push(`Oxygen clock ${sel.oxygenClock}/3`);
+  if (sel.populationStress > 0) clockDetailBits.push(`Pop stress ${sel.populationStress}`);
+  if (sel.hasMilitaryToken) clockDetailBits.push("Invasion token ready");
+  if (sel.bodyLivable) clockDetailBits.push("Body livable (TF≥10)");
+  const clockDetail = clockDetailBits.length
+    ? `<div class="tags need">${clockDetailBits.map(esc).join(" · ")}</div>` : "";
+  el.innerHTML = `
+    <div class="detail-head">
+      <div class="name">
+        <span class="editable-name" contenteditable="true" spellcheck="false"
+          data-edit="colony" data-colony="${esc(sel.id)}" title="Edit colony name">${esc(sel.name)}</span>
+        <span class="rp">Level ${sel.level}</span>
+      </div>
+      <div class="tags" style="border-left:3px solid ${esc(sel.nationColor || "#64748b")};padding-left:8px">RP ${sel.rp} · Nation RP ${sel.nationRp} · strain ${sel.strain} · ${esc(sel.patron)}</div>
+      <div class="tags need">Requires ${sel.requires}</div>
+      ${fervorDetail}
+      ${clockDetail}
+      <div class="tags edit-hint">Click name / culture / ideology chips to rename</div>
+    </div>
+    <div class="summary-group ideology"><div class="summary-title">Ideology</div>
+      <div class="summary-items">${ideoChips || '<span class="tags">—</span>'}${importedChips ? ` <span class="tags">imported:</span> ${importedChips}` : ""}${developNote}</div></div>
+    <div class="summary-group culture"><div class="summary-title">Culture</div>
+      <div class="summary-items">${cultChips || '<span class="tags">—</span>'}</div></div>
+    ${group("Developed", sel.summary.developed, "developed")}
+    ${group("Clean imports", sel.summary.cleanImports, "imports")}
+    ${group("Free excess", sel.summary.freeExcess, "free")}
+    ${group("Needs", needsItems, "needed")}
+    <table><thead><tr><th>Node</th><th>Extra</th><th>Deps</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="3" class="tags">No extras.</td></tr>`}</tbody></table>`;
+}
+
+function commitEditable(el: HTMLElement): void {
+  const s = requireSession();
+  const kind = el.getAttribute("data-edit");
+  const colonyId = el.getAttribute("data-colony");
+  if (!kind || !colonyId) return;
+  const raw = (el.textContent || "").replace(/\u00a0/g, " ").trim();
+  const c = s.state.colonies.find((x) => x.id === colonyId);
+  if (!c) return;
+  let changed = false;
+  if (kind === "colony") {
+    const before = c.name;
+    if (s.renameColony(colonyId, raw)) changed = c.name !== before || raw === "";
+    else changed = true;
+  } else if (kind === "culture") {
+    const index = Number(el.getAttribute("data-index"));
+    const before = c.culture[index];
+    if (s.renameCulture(colonyId, index, raw)) changed = c.culture[index] !== before;
+    else changed = true;
+  } else if (kind === "ideology") {
+    const index = Number(el.getAttribute("data-index"));
+    const before = c.ideology[index];
+    if (s.renameIdeology(colonyId, index, raw)) changed = c.ideology[index] !== before;
+    else changed = true;
+  } else if (kind === "ideologyImported") {
+    const index = Number(el.getAttribute("data-index"));
+    const before = c.ideologyImported[index];
+    if (s.renameIdeologyImported(colonyId, index, raw)) changed = c.ideologyImported[index] !== before;
+    else changed = true;
+  }
+  if (changed) render();
+}
+
+function moveCard(o: MoveOption): string {
+  const badges = o.badges.map((b) => `<span class="chip">${esc(b)}</span>`).join("");
+  const hi = o.fillsRequires ? " requires-hit" : "";
+  const label = o.kind.startsWith("cancel") ? "Cancel"
+    : o.kind === "switch" ? "Switch"
+    : o.kind === "found-colony" ? "Found"
+    : o.kind === "trojan" ? "Trojan"
+    : o.kind === "invade" ? "Invade"
+    : "Take";
+  return `<div class="move-card${hi}" data-key="${esc(o.key)}">
+    <div class="move-title">${esc(o.title)}</div>
+    <div class="move-badges">${badges}</div>
+    <div class="move-effect">${esc(o.effect)}</div>
+    <button class="good move-take" data-key="${esc(o.key)}">${label}</button>
+  </div>`;
+}
+
+function renderMoves(snap: UiSnapshot): void {
+  const el = $("moves");
+  const label = $("movesActing");
+  if (label) label.textContent = snap.actingName ? `(${snap.actingName})` : "";
+  if (!snap.actingId) { el.innerHTML = `<div class="tags">All acted — End turn.</div>`; return; }
+  el.innerHTML = snap.moveOptions.map(moveCard).join("") +
+    `<div class="move-card" data-action="pass"><div class="move-title">Pass</div><button data-action="pass">Pass</button></div>` +
+    `<div class="move-card" data-action="auto"><div class="move-title">Auto</div><button class="primary" data-action="auto">Auto</button></div>`;
+}
+
+function renderLog(snap: UiSnapshot): void {
+  $("log").innerHTML = snap.log.slice(0, 120)
+    .map((e) => `<div class="log-line ${e.imp ? "imp" : ""}">T${e.turn}: ${esc(e.msg)}</div>`).join("");
+}
+
+// --- Rules tab ---
+function renderRules(): void {
+  const el = document.getElementById("rulesForm");
+  if (!el) return;
+  let group = "";
+  el.innerHTML = RULE_DEFS.map((r) => {
+    const head = r.group !== group ? `<h4>${esc((group = r.group))}</h4>` : "";
+    const v = selectedRules[r.id];
+    const input = r.kind === "bool"
+      ? `<input type="checkbox" data-rule="${r.id}"${v ? " checked" : ""} />`
+      : `<input type="number" data-rule="${r.id}" value="${v}" min="${r.min ?? ""}" max="${r.max ?? ""}" step="${r.step ?? 1}" style="width:5em" />`;
+    return `${head}<label class="rule-row" title="${esc(r.help)}">${input} ${esc(r.label)} <span class="tags">(default ${r.def}, legacy ${r.legacy})</span></label><br/>`;
+  }).join("");
+}
+document.getElementById("rulesForm")?.addEventListener("change", (e) => {
+  const t = e.target as HTMLInputElement;
+  const id = t.dataset.rule;
+  if (!id) return;
+  selectedRules[id] = t.type === "checkbox" ? t.checked : Number(t.value);
+});
+document.getElementById("rulesDefault")?.addEventListener("click", () => { selectedRules = defaultRules(); renderRules(); });
+document.getElementById("rulesLegacy")?.addEventListener("click", () => { selectedRules = legacyRules(); renderRules(); });
+
+// --- Version / Ruleset snapshots ---
+interface VersionEntry { version: string; summary: string; available: boolean; date: string | null; path: string | null; reason?: string }
+async function renderVersions(): Promise<void> {
+  const el = document.getElementById("versionList");
+  if (!el) return;
+  try {
+    const r = await fetch(`${import.meta.env.BASE_URL}versions/manifest.json`, { cache: "no-store" });
+    const m = (await r.json()) as { live: string; versions: VersionEntry[] };
+    el.innerHTML = m.versions.map((v) => {
+      const live = v.version === m.live ? ' <span class="variant-default">live</span>' : "";
+      const dis = v.available ? "" : " disabled";
+      const sub = v.available ? `${esc(v.summary)}${v.date ? ` · ${v.date}` : ""}` : `unavailable — ${esc(v.summary)}`;
+      return `<button type="button" class="variant-btn"${dis} data-snapshot="${esc(v.path ?? "")}" data-ver="${esc(v.version)}">
+        <span class="variant-id">${esc(v.version)}${live}</span><span class="variant-label">${sub}</span></button>`;
+    }).join("");
+  } catch {
+    el.textContent = "No snapshot manifest found (run node scripts/snapshot.mjs).";
+  }
+}
+document.getElementById("versionList")?.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("[data-snapshot]") as HTMLButtonElement | null;
+  if (!btn || btn.disabled || !btn.dataset.snapshot) return;
+  ($("snapshotFrame") as HTMLIFrameElement).src = `${import.meta.env.BASE_URL}${btn.dataset.snapshot}`;
+  $("snapshotLabel").textContent = `Snapshot ${btn.dataset.ver} (frozen rules)`;
+  $("snapshotOverlay").hidden = false;
+});
+document.getElementById("snapshotBack")?.addEventListener("click", () => {
+  ($("snapshotFrame") as HTMLIFrameElement).src = "about:blank";
+  $("snapshotOverlay").hidden = true;
+});
+
+// --- Setup bindings ---
+document.querySelector(".setup-tabs")?.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("[data-setup-tab]") as HTMLElement | null;
+  if (!btn?.dataset.setupTab) return;
+  setupTab = btn.dataset.setupTab as SetupTab;
+  renderSetup();
+});
+$("fervorVariantButtons").addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("[data-variant]") as HTMLElement | null;
+  if (!btn?.dataset.variant) return;
+  selectedVariantId = btn.dataset.variant;
+  renderSetup();
+});
+document.getElementById("solarVariantButtons")?.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("[data-solar-variant]") as HTMLElement | null;
+  if (!btn?.dataset.solarVariant) return;
+  selectedSolarVariantId = btn.dataset.solarVariant;
+  renderSetup();
+});
+$("btnBeginSim").onclick = () => beginSimulation();
+
+// --- Play bindings (guarded: only when session exists) ---
+$("colonies").addEventListener("click", (e) => {
+  if (!session) return;
+  const t = (e.target as HTMLElement).closest(".colony") as HTMLElement | null;
+  if (!t?.dataset.id) return;
+  session.select(t.dataset.id);
+  render();
+});
+$("solarMap").addEventListener("click", (e) => {
+  const id = (e.target as Element).getAttribute?.("data-id");
+  if (!session || !id) return;
+  session.select(id);
+  render();
+});
+$("moves").addEventListener("click", (e) => {
+  if (!session) return;
+  const btn = (e.target as HTMLElement).closest("[data-key],[data-action]") as HTMLElement | null;
+  if (!btn) return;
+  const action = btn.getAttribute("data-action");
+  if (action === "pass") { session.pass(); render(); return; }
+  if (action === "auto") { session.autoActOnce(); render(); return; }
+  const key = btn.getAttribute("data-key");
+  if (key) { session.applyByKey(key); render(); }
+});
+$("btnAuto").onclick = () => { if (!session) return; session.autoActOnce(); render(); };
+$("btnEnd").onclick = () => { if (!session) return; session.endTurn(); render(); };
+$("btnFound").onclick = () => { if (!session) return; session.tryFound(); render(); };
+$("btnSim").onclick = () => {
+  if (!session) return;
+  const n = Number(($("simN") as HTMLInputElement).value) || 10;
+  session.simulateTurns(Math.max(1, Math.min(200, n)));
+  render();
+};
+$("btnNew").onclick = () => returnToSetup();
+
+const thrInput = document.getElementById("indepThreshold") as HTMLInputElement | null;
+if (thrInput) {
+  thrInput.addEventListener("change", () => {
+    if (!session) return;
+    session.setIndependenceThreshold(Number(thrInput.value));
+    render();
+  });
+}
+
+$("detail").addEventListener("keydown", (e) => {
+  const t = e.target as HTMLElement;
+  if (!t?.getAttribute?.("data-edit")) return;
+  if (e.key === "Enter") {
+    e.preventDefault();
+    t.blur();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    render();
+  }
+});
+$("detail").addEventListener("focusout", (e) => {
+  const t = e.target as HTMLElement;
+  if (!t?.getAttribute?.("data-edit")) return;
+  if (!session) return;
+  commitEditable(t);
+});
+
+// Boot into setup lobby (do not auto-start a game).
+showPhase("setup");
+renderSetup();

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Node Colonization — CORE L0–L4 (0.9.0)</title>
+    <script type="module" crossorigin src="./assets/index-BV1fpL-l.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BZdSy_sn.css">
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <h1>NODE COLONIZATION <span class="badge">CORE / L4</span></h1>
+        <div class="meta">
+          Turn <b id="turn">1</b>
+          · Acting: <b id="acting">—</b>
+          · Phase: <b id="phase">Colony</b>
+          · Seed <b id="seed">—</b>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button class="primary" id="btnAuto">Auto-resolve</button>
+        <button class="good" id="btnEnd">End turn</button>
+        <button id="btnFound" disabled>Found</button>
+        <span id="foundTaxHint" class="hint" hidden></span>
+        <label class="inline">
+          Simulate
+          <input id="simN" type="number" min="1" max="200" value="10" />
+        </label>
+        <button class="primary" id="btnSim">Simulate N</button>
+        <label class="inline">
+          Seed
+          <input id="seedInput" type="text" placeholder="random" />
+        </label>
+        <label class="inline" title="Fervor sum for independence revolt">
+          Indep. threshold
+          <input id="indepThreshold" type="number" min="1" max="99" value="5" />
+        </label>
+        <button class="danger" id="btnNew">New game</button>
+      </div>
+    </header>
+
+    <div id="announcements" class="announcements" hidden></div>
+
+    <main>
+      <section class="col left">
+        <div class="card">
+          <div id="leadingNation" class="tags" style="margin-bottom:8px" hidden></div>
+          <h2>Earth blocs</h2>
+          <div id="blocs"></div>
+        </div>
+        <div class="card">
+          <h2>Solar independents</h2>
+          <div id="independents"></div>
+        </div>
+      </section>
+
+      <section class="col center">
+        <div class="card grow">
+          <h2>Colonies <span class="sub">(highest RP acts first)</span></h2>
+          <div id="colonies"></div>
+        </div>
+        <div class="card">
+          <h2>Legal moves <span class="sub" id="movesActing"></span></h2>
+          <div id="logistics" class="logistics-panel"></div>
+          <div id="moves" class="moves"></div>
+          <p class="hint">
+            Open logistics lines carry <b>1 import + 1 export</b>. Reach: Earth lines = Earth↔Moon; Moon = hub; Mars = Moon↔Mars (no Earth). East↔West Earth trade only if vital+fair. Importing <b>Logistics</b> adds a line. End turn auto-passes, founding, alliance pressure, cleanup.
+          </p>
+        </div>
+      </section>
+
+      <section class="col right">
+        <div class="card">
+          <h2>Selected colony</h2>
+          <div id="detail">Select a colony.</div>
+        </div>
+        <div class="card grow">
+          <h2>Event log</h2>
+          <div id="log"></div>
+        </div>
+      </section>
+    </main>
+
+  </body>
+</html>

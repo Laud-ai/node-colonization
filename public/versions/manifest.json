@@ -1,0 +1,191 @@
+{
+  "live": "0.12.0",
+  "versions": [
+    {
+      "version": "0.12.0",
+      "summary": "L7: T3 geopolitics (proxy wars + solar hegemon overturn)",
+      "available": true,
+      "date": "2026-10-20",
+      "path": "versions/0.12.0/index.html"
+    },
+    {
+      "version": "0.11.0",
+      "summary": "L6: Solar Realist presentation (flags + solar map)",
+      "available": true,
+      "date": "2026-10-20",
+      "path": "versions/0.11.0/index.html"
+    },
+    {
+      "version": "0.10.0",
+      "summary": "L5: Thrust reach + Projects (rule-changers)",
+      "available": true,
+      "date": "2026-10-20",
+      "path": "versions/0.10.0/index.html"
+    },
+    {
+      "version": "0.9.4",
+      "summary": "Refugee & growth fix, Rules tab, Version / Ruleset snapshots",
+      "available": true,
+      "date": "2026-10-20",
+      "path": "versions/0.9.4/index.html"
+    },
+    {
+      "version": "0.9.3",
+      "summary": "Solar-bloc timing + Earth tech spam gate + lobby Diplomacy tab",
+      "available": true,
+      "date": "2026-10-20",
+      "path": "versions/0.9.3/index.html"
+    },
+    {
+      "version": "0.9.2",
+      "summary": "Pre-sim fervor variant setup lobby",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.9.1",
+      "summary": "Subversion importer fix + configurable fervor",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.9.0",
+      "summary": "L4 Survival & military",
+      "available": true,
+      "date": "2026-10-20",
+      "path": "versions/0.9.0/index.html"
+    },
+    {
+      "version": "0.8.3",
+      "summary": "Colony trade affinity ≥ 2, fervor ledger, Trojan send, bilateral trade",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.8.2",
+      "summary": "Earth cycle, Mars lunar gate, 1 found/turn",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.8.1",
+      "summary": "Needs before pass, feed gates, Independent bias",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.8.0",
+      "summary": "Nation colonization spine",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.7.3",
+      "summary": "Evocative modular colony names",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.7.2",
+      "summary": "Corporate cyberpunk cultures, culture-forward names, editable labels",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.7.1",
+      "summary": "Playtest trade gates, two-way logistics, reach, social blocs",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.7.0",
+      "summary": "L3 Identity & soft power (full)",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.6.1",
+      "summary": "Oxygen, social assist affinity, lend polish",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.6.0",
+      "summary": "L2 corrections (Tiago)",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.5.3",
+      "summary": "Colony level + Logistics specialty lines",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.5.2",
+      "summary": "Regional Power fix",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.5.1",
+      "summary": "Random mode + naming + Needs bar",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.5.0",
+      "summary": "Continuous logistics (authoritative)",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.4.0",
+      "summary": "Earth trade slots + Logistics (authoritative)",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    },
+    {
+      "version": "0.3.0",
+      "summary": "0.3.0 rule corrections",
+      "available": false,
+      "date": null,
+      "path": null,
+      "reason": "Build not recoverable on the box (no tarball/source kept for this version)."
+    }
+  ]
+}
