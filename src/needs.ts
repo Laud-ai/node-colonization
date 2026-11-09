@@ -17,8 +17,8 @@ import { flagForColony, flagForEarth } from "./flagLineage.js";
 
 /**
  * 0.15.3 needs-tree states (Tiago): specialty (blue), developed (green), imported (yellow),
- * missing (red), no-stress expansion (grey). "locked" = not owned, not required and not yet
- * expandable without strain (deps missing) — the only remaining catch-all.
+ * missing (red), possible expansion (grey). 0.15.4: red = direct prerequisite of a developed node
+ * that the colony lacks; grey = developable (prereqs present / none); "locked" = prereqs absent.
  */
 export type NeedState = "specialty" | "developed" | "imported" | "missing" | "expand" | "locked";
 
@@ -63,35 +63,42 @@ export interface TreeNode {
   imported: number;
 }
 
-/** Pure classifier (exported for tests). Owned states win; then missing, expansion, locked. */
-export function classifyNeed(c: Colony, n: NodeType, miss: Set<NodeType>, grey: Set<NodeType>): NeedState {
-  const count = extras(c, n);
+/**
+ * Pure classifier (exported for tests). 0.15.4 (Tiago): red only when a node sits directly below a
+ * developed (green) node that needs it and the colony doesn't have it — matching the sim, where only
+ * developed nodes create dependency strain. Not red just for being the Requires gate or a basal.
+ * Grey = not owned but a basic node, or developable (all prerequisites owned). Locked = the rest.
+ */
+export function classifyNeed(c: Colony, n: NodeType): NeedState {
   if (n === c.specialty) return "specialty";
   if ((c.developed[n] || 0) > 0) return "developed";
-  if (count > 0) return "imported";
-  if (miss.has(n)) return "missing";
-  if (grey.has(n)) return "expand";
+  if (extras(c, n) > 0) return "imported";
+  if (neededByDeveloped(c, n).length) return "missing";
+  // Basics (Resources, Infrastructure, Energy, Food, Water, Oxygen) are always a possible expansion (Tiago).
+  if (BASAL_NODES.includes(n) || (DEPS[n] || []).every((d) => extras(c, d) > 0)) return "expand";
   return "locked";
 }
 
+/** Developed nodes that list `n` as a direct prerequisite. */
+export function neededByDeveloped(c: Colony, n: NodeType): NodeType[] {
+  return NODES.filter((m) => (c.developed[m] || 0) > 0 && (DEPS[m] || []).includes(n));
+}
+
 export function needsTree(c: Colony): TreeNode[] {
-  const miss = new Set(missingNodes(c));
-  const grey = new Set(noStrainExpansions(c));
   const need = stackedDepNeeds(c);
   return NODES.map((n) => {
     const count = extras(c, n);
     const has = count > 0;
-    const state = classifyNeed(c, n, miss, grey);
+    const state = classifyNeed(c, n);
     const src: string[] = [];
     if (c.specialty === n) src.push("specialty");
     if ((c.developed[n] || 0) > 0) src.push(`developed×${c.developed[n]}`);
     const imp = count - (c.specialty === n ? 1 : 0) - (c.developed[n] || 0);
     if (imp > 0) src.push(`imported×${imp}`);
     let why = "";
-    if (n === c.requires) why = "Requires — importing it develops +1 node";
-    else if (state === "missing" && (need[n] || 0) > count) why = `strain: needs ${need[n]}, has ${count}`;
-    else if (state === "missing") why = "missing basal";
-    else if (state === "expand") why = "could develop with no strain";
+    if (state === "missing") why = `needed by developed ${neededByDeveloped(c, n).join(", ")} (strain: needs ${need[n] || 1}, has ${count})`;
+    else if (state === "expand") why = BASAL_NODES.includes(n) ? "basic — can develop" : "prerequisites present — can develop";
+    if (n === c.requires) why = `Requires — importing it develops +1 node${why ? ` · ${why}` : ""}`;
     else if (has) {
       const md = missingDepsOf(c, n);
       why = md.length ? `strained (missing ${md.join(", ")})` : "covered";

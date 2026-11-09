@@ -3,7 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createGame, runTurns } from "../src/engine.js";
 import { mulberry32 } from "../src/rng.js";
-import { NODES, extras, strainOf } from "../src/nodes.js";
+import { NODES, DEPS, extras, strainOf } from "../src/nodes.js";
+import { BASAL_NODES } from "../src/l3.js";
 import {
   noStrainExpansions, strainIfDeveloped, missingNodes, needsTree, listSuppliers, compareSuppliers, type Supplier,
 } from "../src/needs.js";
@@ -47,7 +48,7 @@ test("0.14.0 needs tree states + suppliers are read-only and sorted", () => {
   const c = G.colonies[0]!;
   const tree = needsTree(c);
   assert.equal(tree.length, NODES.length);
-  assert.equal(tree.find((t) => t.node === c.requires)!.state, "missing");
+  assert.ok(tree.find((t) => t.node === c.requires)!.why.startsWith("Requires"), "Requires is labelled (0.15.4: red only if a developed node needs it)");
   const all = listSuppliers(G, c, null, true);
   const water = listSuppliers(G, c, "Water", false);
   assert.ok(water.every((s) => s.node === "Water" && s.moveKey === null));
@@ -74,33 +75,60 @@ test("0.14.0 supplier sort: Requires → feasible → needs → own/ally → neu
   assert.deepEqual(list, ["req", "blocked-req", "own", "ally", "neutral", "rival", "grey-own", "illegal"]);
 });
 
-test("0.15.3 needs tree: every state is reachable (specialty/developed/imported/missing/expand/locked)", async () => {
-  const { classifyNeed } = await import("../src/needs.js");
+function freshColony() {
   const G = createGame(7);
   const c = G.colonies[0]!;
   for (const n of NODES) c.developed[n] = 0;
   c.logisticsLines.forEach((l) => { l.route = null; l.exportRoute = null; });
   c.specialty = "Science"; c.requires = "Money";
-  c.developed.Resources = 1; c.developed.Infrastructure = 1; c.developed.Energy = 1; c.developed.Food = 1;
-  // Fake an active Water import on a free line
-  const line = c.logisticsLines[0]!;
-  line.route = { node: "Water", sourceKind: "earth", sourceId: G.blocs[0]!.name, sourceName: G.blocs[0]!.name } as never;
+  return { G, c };
+}
+
+test("0.15.4 fresh colony: no red, basics grey, the rest locked", () => {
+  const { c } = freshColony();
   const tree = needsTree(c);
   const st = (n: string) => tree.find((t) => t.node === n)!.state;
+  assert.equal(tree.filter((t) => t.state === "missing").length, 0, "nothing developed → nothing red");
+  assert.equal(st("Resources"), "expand");
+  for (const n of ["Water", "Oxygen", "Food", "Energy", "Infrastructure"]) assert.equal(st(n), "expand", `${n} basic → grey`);
+  assert.equal(st("Population"), "locked", "needs Food + Water first");
+  assert.equal(st("Money"), "locked", "Requires is not red by itself");
+  assert.equal(st("Science"), "specialty");
+  c.developed.Resources = 1;
+  const t2 = needsTree(c);
+  const st2 = (n: string) => t2.find((t) => t.node === n)!.state;
+  assert.equal(st2("Infrastructure"), "expand", "prereq Resources now present");
+  assert.equal(t2.filter((t) => t.state === "missing").length, 0, "Resources has no prerequisites");
+});
+
+test("0.15.4 red only directly below a developed node that needs it", async () => {
+  const { classifyNeed, neededByDeveloped } = await import("../src/needs.js");
+  const { G, c } = freshColony();
+  c.developed.Resources = 1; c.developed.Infrastructure = 1; c.developed.Energy = 1; c.developed.Food = 1;
+  c.developed.Population = 1; // needs Food + Water directly
+  const line = c.logisticsLines[0]!;
+  line.route = { node: "Oxygen", sourceKind: "earth", sourceId: G.blocs[0]!.name, sourceName: G.blocs[0]!.name } as never;
+  const tree = needsTree(c);
+  const st = (n: string) => tree.find((t) => t.node === n)!.state;
+  assert.equal(st("Water"), "missing", "directly below developed Population");
+  assert.deepEqual(neededByDeveloped(c, "Water"), ["Population"]);
+  assert.equal(extras(c, "Oxygen") > 0 ? st("Oxygen") : "imported", "imported");
   assert.equal(st("Science"), "specialty");
   assert.equal(st("Resources"), "developed");
-  assert.equal(extras(c, "Water") > 0 ? st("Water") : "imported", "imported");
-  assert.equal(st("Money"), "missing", "Requires");
-  assert.equal(st("Oxygen"), "missing", "absent basal");
-  assert.equal(st("Population"), "expand", "Food + Water covered → no strain");
+  assert.equal(st("Culture"), "expand", "Population present");
+  assert.equal(st("Money"), "locked", "needs Production too");
   assert.equal(st("Subversion"), "locked");
+  // every red node is a direct prerequisite of a developed node and is not owned
+  for (const t of tree.filter((x) => x.state === "missing")) {
+    assert.ok(neededByDeveloped(c, t.node).length > 0 && extras(c, t.node) === 0, t.node);
+  }
+  assert.equal(classifyNeed(c, "Resources"), "developed", "owned beats everything");
   const states = new Set(tree.map((t) => t.state));
-  for (const s of ["specialty", "developed", "imported", "missing", "expand", "locked"]) assert.ok(states.has(s as never), s);
-  // classifier priority: owned beats missing
-  assert.equal(classifyNeed(c, "Resources", new Set(["Resources"]), new Set()), "developed");
-  // mid-game: "locked" is no longer the bulk of the tree
+  for (const s2 of ["specialty", "developed", "imported", "missing", "expand", "locked"]) assert.ok(states.has(s2 as never), s2);
+  // mid-game invariant on real games
   const M = midGame();
-  let locked = 0, total = 0;
-  for (const col of M.colonies) for (const t of needsTree(col)) { total++; if (t.state === "locked") locked++; }
-  assert.ok(locked / total < 0.75, `locked share ${locked}/${total}`);
+  for (const col of M.colonies) for (const t of needsTree(col)) {
+    if (t.state === "missing") assert.ok(neededByDeveloped(col, t.node).length > 0 && extras(col, t.node) === 0);
+    if (t.state === "expand") assert.ok(BASAL_NODES.includes(t.node) || (DEPS[t.node] || []).every((d) => extras(col, d) > 0));
+  }
 });

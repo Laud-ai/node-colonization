@@ -1,6 +1,6 @@
 # AGENTS.md — Node Colonization
 
-Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.15.3** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags).
+Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.15.4** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags).
 
 **Live (GitHub Pages):** https://laud-ai.github.io/node-colonization/  
 **Repo:** https://github.com/Laud-ai/node-colonization
@@ -43,7 +43,7 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 | `src/rules.ts` | Live rule flags (Rules tab) |
 | `src/fervorVariants.ts` / `src/solarBlocVariants.ts` | Lobby presets |
 | `src/l3.ts`–`src/l7.ts` | Layered features (fervor, survival, projects, flags/map, geopolitics) |
-| `src/needs.ts` | 0.15.3 states (`classifyNeed`): specialty / developed / imported / missing / expand (no-stress) / locked — owned states win; `short` = owned but under-covered. 0.14.0 read-only analysis: `missingNodes`, `noStrainExpansions` (engine `strainOf` on a copy), `needsTree`, `listSuppliers` + `compareSuppliers` (uses `findSources`/`listMoves`/`rankTradeSource`) |
+| `src/needs.ts` | 0.15.3 states (`classifyNeed`): specialty / developed / imported / missing / expand / locked — owned states win; `short` = owned but under-covered. 0.15.4 (Tiago): **missing (red) only for a direct prerequisite of a developed node that the colony lacks** (`neededByDeveloped`; mirrors sim strain, which only developed nodes create) — never just for Requires/basal; **grey** = basics (BASAL_NODES) or nodes whose prerequisites are all owned; **locked** = the rest. Supplier ranking still uses `missingNodes`/`noStrainExpansions`. 0.14.0 read-only analysis: `missingNodes`, `noStrainExpansions` (engine `strainOf` on a copy), `needsTree`, `listSuppliers` + `compareSuppliers` (uses `findSources`/`listMoves`/`rankTradeSource`) |
 | `src/runSim.ts` / `src/cli.ts` | Headless entry |
 | `src/ui/main.ts` + `index.html` | Lobby + play UI (0.14.0 map-first: globes fill the stage, panels are `.win` side windows) |
 | `src/ui/windows.ts` | Side-window manager: dock left/right, minimize to tray, close/reopen via Windows menu, layout in localStorage `nc.layout.v1` |
@@ -74,7 +74,7 @@ npm run build
 npm run smoke
 ```
 
-`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → pins default + glyph toggle → needs tree → supplier menu → minimize/restore a window → routes layer + toggle → 60 more turns (late game) → flags on cards + map strip → version iframes 0.9.0 and 0.12.0 → `?flags` gallery). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`, `pins-closeup.png`, `glyphs-closeup.png`, `needs-tree.png`, `suppliers.png`, `map-first.png`, `routes-late-game.png`, `flags-gallery.png`, `flags-small.png` (real 24×16 small-mode flags at 3× DPR), `pin-flag-closeup.png`, `needs-tree-states.png` (a colony with all five states), `globe-limb-moon.png`, `globe-limb-mars.png`. Smoke asserts route-label flags load and render (no failures, inked pixels) and pins get their own flags. Smoke runs Chromium only — check SVG-as-image changes in Firefox too (`npx playwright install firefox`).
+`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → pins default + glyph toggle → needs tree → supplier menu → minimize/restore a window → routes layer + toggle → 60 more turns (late game) → flags on cards + map strip → version iframes 0.9.0 and 0.12.0 → `?flags` gallery). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`, `pins-closeup.png`, `glyphs-closeup.png`, `needs-tree.png`, `suppliers.png`, `map-first.png`, `routes-late-game.png`, `flags-gallery.png`, `flags-small.png` (real 24×16 small-mode flags at 3× DPR), `pin-flag-closeup.png`, `needs-tree-fresh.png` (turn 1: no red, basics grey), `needs-tree-midgame.png`, `needs-tree-states.png` (late-game colony with the most states), `globe-limb-moon.png`, `globe-limb-mars.png`. Smoke asserts route-label flags load and render (no failures, inked pixels) and pins get their own flags. Smoke runs Chromium only — check SVG-as-image changes in Firefox too (`npx playwright install firefox`).
 
 ## Release steps
 

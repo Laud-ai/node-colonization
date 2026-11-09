@@ -1,6 +1,13 @@
 {
-  "live": "0.15.3",
+  "live": "0.15.4",
   "versions": [
+    {
+      "version": "0.15.4",
+      "summary": "Needs tree: red only under a developed node",
+      "available": true,
+      "date": "2026-11-09",
+      "path": "versions/0.15.4/index.html"
+    },
     {
       "version": "0.15.3",
       "summary": "Needs tree colours, upward tree, no clipping through the bodies",
