@@ -13,9 +13,11 @@
     "sim:fervor": "tsx src/fervorSweep.ts",
     "sim:solar": "tsx src/solarBlocSweep.ts",
     "sim:growth": "tsx src/growthProbe.ts",
-    "snapshot": "node scripts/snapshot.mjs"
+    "snapshot": "node scripts/snapshot.mjs",
+    "smoke": "npm run build && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
