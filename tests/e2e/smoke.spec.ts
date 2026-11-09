@@ -44,6 +44,34 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   fs.mkdirSync(smokeDir, { recursive: true });
   await page.screenshot({ path: path.join(smokeDir, "smoke.png"), fullPage: true });
 
+  // 0.13.0 globes: canvases render, textures load, markers appear after a few turns
+  await expect(page.locator("#globeMoon canvas.globe-canvas")).toBeVisible();
+  await expect(page.locator("#globeMars canvas.globe-canvas")).toBeVisible();
+  await expect(page.locator("#globeMoon")).toHaveAttribute("data-texture", "loaded", { timeout: 20_000 });
+  await expect(page.locator("#globeMars")).toHaveAttribute("data-texture", "loaded", { timeout: 20_000 });
+  await page.locator("#simN").fill("18");
+  await page.locator("#btnSim").click();
+  await expect(page.locator("#turn")).toHaveText("20");
+  await expect.poll(async () => {
+    const m = Number(await page.locator("#globeMoon").getAttribute("data-markers"));
+    const r = Number(await page.locator("#globeMars").getAttribute("data-markers"));
+    return m + r;
+  }).toBeGreaterThan(0);
+  const coloniesShown = await page.locator("#colonies .colony").count();
+  const markers = Number(await page.locator("#globeMoon").getAttribute("data-markers"))
+    + Number(await page.locator("#globeMars").getAttribute("data-markers"));
+  expect(markers).toBe(coloniesShown);
+  await page.addStyleTag({ content: "header { position: static !important; }" });
+  await page.waitForTimeout(500);
+  await page.locator("#globeCard").screenshot({ path: path.join(smokeDir, "globes.png") });
+  await page.locator('[data-globe-mode="moon"]').click();
+  await page.waitForTimeout(400);
+  await page.locator("#globeCard").screenshot({ path: path.join(smokeDir, "globe-moon.png") });
+  await page.locator('[data-globe-mode="mars"]').click();
+  await page.waitForTimeout(400);
+  await page.locator("#globeCard").screenshot({ path: path.join(smokeDir, "globe-mars.png") });
+  await page.locator('[data-globe-mode="both"]').click();
+
   // Back to lobby for version picker
   await page.locator("#btnNew").click();
   await expect(page.locator("#setupScreen")).toBeVisible();
@@ -56,7 +84,7 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   const count = await versionBtns.count();
   expect(count).toBeGreaterThanOrEqual(2);
 
-  // Prefer an older snapshot (not live 0.12.0) if present
+  // Prefer an older snapshot (not the live build) if present
   let older = page.locator('#versionList button.variant-btn:not([disabled])[data-ver="0.9.0"]');
   if ((await older.count()) === 0) {
     older = versionBtns.filter({ hasNotText: "live" }).first();
@@ -69,6 +97,15 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   // Frozen snapshot should paint its own root UI
   await expect(frame.locator("body")).toBeVisible({ timeout: 15_000 });
   await expect(frame.locator("body")).not.toBeEmpty();
+
+  // Previous release (0.12.0) still loads as a frozen snapshot
+  await page.locator("#snapshotBack").click();
+  await expect(overlay).toBeHidden();
+  const prev = page.locator('#versionList button.variant-btn:not([disabled])[data-ver="0.12.0"]');
+  await expect(prev).toBeVisible();
+  await prev.click();
+  await expect(overlay).toBeVisible();
+  await expect(frame.locator("#setupScreen")).toBeVisible({ timeout: 15_000 });
 
   expect(pageErrors, `page errors: ${pageErrors.join(" | ")}`).toEqual([]);
   expect(consoleErrors, `console errors: ${consoleErrors.join(" | ")}`).toEqual([]);

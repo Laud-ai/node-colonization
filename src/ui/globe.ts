@@ -1,0 +1,267 @@
+/**
+ * 0.13.0 — 3D Moon / Mars globes as the live solar-side view.
+ * Rendering approach + HUD glyphs reused from the Sep 1 Moon Globe (fully lit
+ * MeshBasicMaterial mosaic, canvas-drawn HUD decals on the sphere).
+ * Read-only: receives plain marker data from the UI; never touches sim state.
+ * Loaded lazily (dynamic import) so three.js + textures only load when playing.
+ */
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { clampLevel, drawHudIcon, worldPlaneSize } from "./hudIcon.js";
+import moonUrl from "./textures/moon.jpg?url";
+import marsUrl from "./textures/mars.jpg?url";
+
+export type GlobeBody = "Moon" | "Mars";
+export interface GlobeMarker {
+  id: string; lat: number; lon: number; level: number; color: string;
+  /** Plain-text tooltip lines (first = title). */
+  info: string[];
+}
+
+const RADIUS = 1;
+const DECAL_OFFSET = 0.006;
+const HUD_CANVAS = 128;
+/** Game view is smaller on screen than the Sep 1 globe; enlarge glyphs a bit. */
+const MARKER_SCALE = 1.5;
+const OUT = new THREE.Vector3(0, 0, 1);
+const TEXTURES: Record<GlobeBody, string> = { Moon: moonUrl, Mars: marsUrl };
+
+/** Equirectangular maps centered on 0° lon; SphereGeometry puts texture center at +X. */
+function latLonToVector3(lat: number, lon: number, r: number, t = new THREE.Vector3()): THREE.Vector3 {
+  const phi = THREE.MathUtils.degToRad(lon + 180);
+  const theta = THREE.MathUtils.degToRad(90 - lat);
+  const s = Math.sin(theta);
+  return t.set(-Math.cos(phi) * s * r, Math.cos(theta) * r, Math.sin(phi) * s * r);
+}
+
+interface Pin { m: GlobeMarker; mesh: THREE.Mesh; tex: THREE.CanvasTexture; canvas: HTMLCanvasElement; key: string; }
+
+const views = new Set<GlobeView>();
+let raf = 0;
+function loop(): void {
+  raf = requestAnimationFrame(loop);
+  for (const v of views) v.frame();
+}
+
+export class GlobeView {
+  readonly el: HTMLElement;
+  private canvas = document.createElement("canvas");
+  private tip = document.createElement("div");
+  private renderer: THREE.WebGLRenderer;
+  private scene = new THREE.Scene();
+  private camera = new THREE.PerspectiveCamera(40, 1, 0.05, 400);
+  private controls: OrbitControls;
+  private group = new THREE.Group();
+  private sphere: THREE.Mesh;
+  private pins = new Map<string, Pin>();
+  private geo = new THREE.PlaneGeometry(1, 1);
+  private ray = new THREE.Raycaster();
+  private ndc = new THREE.Vector2();
+  private selectedId: string | null = null;
+  private hoverId: string | null = null;
+  private down = { x: 0, y: 0 };
+  private textureRequested = false;
+  /** Until the player drags/zooms, keep the camera aimed at the colonies. */
+  private userMoved = false;
+
+  constructor(el: HTMLElement, readonly body: GlobeBody, private onSelect: (id: string) => void) {
+    this.el = el;
+    el.classList.add("globe-view");
+    el.dataset.body = body;
+    el.dataset.markers = "0";
+    this.canvas.className = "globe-canvas";
+    this.tip.className = "globe-tip";
+    this.tip.hidden = true;
+    const label = document.createElement("div");
+    label.className = "globe-label";
+    label.textContent = body.toUpperCase();
+    el.append(this.canvas, label, this.tip);
+
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.setClearColor(0x05070d, 1);
+
+    this.camera.position.copy(body === "Moon" ? new THREE.Vector3(0, -1.35, 2.55) : new THREE.Vector3(0, 0.25, 2.9));
+    this.controls = new OrbitControls(this.camera, this.canvas);
+    Object.assign(this.controls, {
+      enablePan: false, enableDamping: true, dampingFactor: 0.08, rotateSpeed: 0.55, zoomSpeed: 0.85,
+      minDistance: 1.25, maxDistance: 6, minPolarAngle: 0.04, maxPolarAngle: Math.PI - 0.04,
+    });
+
+    // Near side (0° lon) faces the camera.
+    this.group.rotation.y = -Math.PI / 2;
+    this.scene.add(this.group, makeStars(1600));
+    this.sphere = new THREE.Mesh(
+      new THREE.SphereGeometry(RADIUS, 96, 64),
+      new THREE.MeshBasicMaterial({ color: body === "Moon" ? 0x8a8a8a : 0x8a4a32 }),
+    );
+    this.group.add(this.sphere);
+
+    this.controls.addEventListener("start", () => { this.userMoved = true; });
+    this.canvas.addEventListener("pointerdown", (e) => { this.down = { x: e.clientX, y: e.clientY }; });
+    this.canvas.addEventListener("pointerup", (e) => {
+      if (Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5) return;
+      const id = this.pick(e);
+      if (id) this.onSelect(id);
+    });
+    this.canvas.addEventListener("pointermove", (e) => this.hover(e));
+    this.canvas.addEventListener("pointerleave", () => { this.hoverId = null; this.tip.hidden = true; this.canvas.style.cursor = ""; });
+
+    views.add(this);
+    if (!raf) raf = requestAnimationFrame(loop);
+  }
+
+  /** Lazy texture load: only once the view is first shown. */
+  private ensureTexture(): void {
+    if (this.textureRequested) return;
+    this.textureRequested = true;
+    new THREE.TextureLoader().load(TEXTURES[this.body], (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+      const mat = this.sphere.material as THREE.MeshBasicMaterial;
+      mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true;
+      this.el.dataset.texture = "loaded";
+    }, undefined, () => { this.el.dataset.texture = "failed"; });
+  }
+
+  update(markers: GlobeMarker[], selectedId: string | null): void {
+    this.selectedId = selectedId;
+    const live = new Set(markers.map((m) => m.id));
+    for (const [id, p] of this.pins) if (!live.has(id)) this.dispose(p, id);
+    for (const m of markers) {
+      const sel = m.id === selectedId;
+      const key = `${clampLevel(m.level)}|${m.color}|${sel ? 1 : 0}`;
+      let p = this.pins.get(m.id);
+      if (!p) {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = HUD_CANVAS;
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.premultiplyAlpha = true;
+        const mat = new THREE.MeshBasicMaterial({
+          map: tex, transparent: true, premultipliedAlpha: true, depthWrite: false,
+          polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false,
+        });
+        const mesh = new THREE.Mesh(this.geo, mat);
+        mesh.userData.id = m.id;
+        mesh.renderOrder = 2;
+        this.group.add(mesh);
+        p = { m, mesh, tex, canvas, key: "" };
+        this.pins.set(m.id, p);
+      }
+      p.m = m;
+      const pos = latLonToVector3(m.lat, m.lon, RADIUS + DECAL_OFFSET);
+      p.mesh.position.copy(pos);
+      p.mesh.quaternion.setFromUnitVectors(OUT, pos.clone().normalize());
+      if (p.key !== key) {
+        const ctx = p.canvas.getContext("2d");
+        if (ctx) drawHudIcon(ctx, HUD_CANVAS, m.level, m.color, { selected: sel, fit: true });
+        p.tex.needsUpdate = true;
+        const s = worldPlaneSize(m.level) * MARKER_SCALE * (sel ? 1.15 : 1);
+        p.mesh.scale.set(s, s, 1);
+        p.key = key;
+      }
+    }
+    this.el.dataset.markers = String(this.pins.size);
+    if (!this.userMoved && this.pins.size) this.aimAtColonies();
+  }
+
+  /** Face the hemisphere that shows the most colonies (direction among marker sites). */
+  private aimAtColonies(): void {
+    this.group.updateMatrixWorld();
+    const dirs = [...this.pins.values()].map((p) => p.mesh.getWorldPosition(new THREE.Vector3()).normalize());
+    let best = dirs[0]!, bestScore = -1;
+    for (const d of dirs) {
+      const near = dirs.filter((o) => o.dot(d) > 0.55);
+      const c = near.reduce((a, o) => a.add(o), new THREE.Vector3()).normalize();
+      const score = dirs.reduce((a, o) => a + Math.max(0, o.dot(c) - 0.3), 0);
+      if (score > bestScore) { bestScore = score; best = c; }
+    }
+    // Slight tilt toward the equator so polar sites are not edge-on.
+    const flat = new THREE.Vector3(best.x, 0, best.z);
+    const dir = flat.lengthSq() > 1e-4 ? best.clone().lerp(flat.normalize(), 0.25).normalize() : best.clone();
+    this.camera.position.copy(dir.multiplyScalar(this.camera.position.length()));
+    this.controls.update();
+  }
+
+  /** Turn the camera toward a marker, keeping distance. Returns false if not on this body. */
+  focus(id: string): boolean {
+    const p = this.pins.get(id);
+    if (!p) return false;
+    const w = p.mesh.getWorldPosition(new THREE.Vector3()).normalize();
+    this.camera.position.copy(w.multiplyScalar(this.camera.position.length()));
+    this.controls.update();
+    return true;
+  }
+
+  private pick(e: PointerEvent): string | null {
+    const r = this.canvas.getBoundingClientRect();
+    this.ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    this.ray.setFromCamera(this.ndc, this.camera);
+    const hits = this.ray.intersectObjects([this.sphere, ...[...this.pins.values()].map((p) => p.mesh)], false);
+    for (const h of hits) {
+      if (h.object === this.sphere) break; // marker behind the globe
+      const id = h.object.userData.id as string | undefined;
+      if (id) return id;
+    }
+    return null;
+  }
+
+  private hover(e: PointerEvent): void {
+    const id = this.pick(e);
+    this.canvas.style.cursor = id ? "pointer" : "";
+    if (!id) { this.hoverId = null; this.tip.hidden = true; return; }
+    const p = this.pins.get(id)!;
+    if (this.hoverId !== id) {
+      this.hoverId = id;
+      this.tip.innerHTML = "";
+      p.m.info.forEach((line, i) => {
+        const d = document.createElement("div");
+        d.textContent = line;
+        if (i === 0) { d.className = "globe-tip-title"; d.style.borderLeftColor = p.m.color; }
+        this.tip.append(d);
+      });
+    }
+    const r = this.el.getBoundingClientRect();
+    this.tip.style.left = `${Math.min(e.clientX - r.left + 14, r.width - 200)}px`;
+    this.tip.style.top = `${e.clientY - r.top + 12}px`;
+    this.tip.hidden = false;
+  }
+
+  frame(): void {
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    if (!w || !h) return; // hidden view: skip render
+    this.ensureTexture();
+    const size = this.renderer.getSize(new THREE.Vector2());
+    if (size.x !== w || size.y !== h) {
+      this.renderer.setSize(w, h, false);
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+    }
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private dispose(p: Pin, id: string): void {
+    this.group.remove(p.mesh);
+    p.tex.dispose();
+    (p.mesh.material as THREE.Material).dispose();
+    this.pins.delete(id);
+  }
+}
+
+function makeStars(count: number): THREE.Points {
+  // Fixed-pattern starfield (cosmetic; own tiny LCG, never the sim RNG).
+  let s = 1234567;
+  const rnd = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const th = 2 * Math.PI * rnd(), ph = Math.acos(2 * rnd() - 1), r = 90;
+    pos.set([r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph), r * Math.sin(ph) * Math.sin(th)], i * 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(g, new THREE.PointsMaterial({ size: 0.35, color: 0xcfd6e6, transparent: true, opacity: 0.8, depthWrite: false }));
+}

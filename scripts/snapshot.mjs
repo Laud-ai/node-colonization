@@ -11,6 +11,9 @@ if (arg !== "--manifest") {
   });
 }
 const cmp = (a, b) => a.split(".").map(Number).reduce((r, x, i) => r || x - b.split(".").map(Number)[i], 0);
+const prev = fs.existsSync("public/versions/manifest.json")
+  ? Object.fromEntries(JSON.parse(fs.readFileSync("public/versions/manifest.json", "utf8")).versions.map((x) => [x.version, x.date]))
+  : {};
 const out = [];
 for (const f of fs.readdirSync(".")) {
   const m = f.match(/^NOTES-(\d+\.\d+\.\d+)\.md$/);
@@ -19,7 +22,8 @@ for (const f of fs.readdirSync(".")) {
   const title = fs.readFileSync(f, "utf8").split("\n")[0].replace(/^#\s*/, "").replace(/^[\d.]+\s*[—-]\s*/, "");
   const dir = `public/versions/${v}`;
   const available = fs.existsSync(`${dir}/index.html`);
-  const date = available ? fs.statSync(`${dir}/index.html`).mtime.toISOString().slice(0, 10) : null;
+  // Keep a version's first recorded date (mtimes change when the tree is copied/extracted).
+  const date = available ? (prev[v] || fs.statSync(`${dir}/index.html`).mtime.toISOString().slice(0, 10)) : null;
   out.push({ version: v, summary: title, available, date, path: available ? `versions/${v}/index.html` : null,
     reason: available ? undefined : "Build not recoverable on the box (no tarball/source kept for this version)." });
 }

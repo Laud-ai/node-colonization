@@ -1,6 +1,13 @@
 {
-  "live": "0.12.0",
+  "live": "0.13.0",
   "versions": [
+    {
+      "version": "0.13.0",
+      "summary": "3D Moon + Mars globes as the live solar view",
+      "available": true,
+      "date": "2026-11-09",
+      "path": "versions/0.13.0/index.html"
+    },
     {
       "version": "0.12.0",
       "summary": "L7: T3 geopolitics (proxy wars + solar hegemon overturn)",

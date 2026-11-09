@@ -1,6 +1,6 @@
 # AGENTS.md — Node Colonization
 
-Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.12.0** (L7).
+Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.13.0** (L7 + 3D Moon/Mars globes).
 
 **Live (GitHub Pages):** https://laud-ai.github.io/node-colonization/  
 **Repo:** https://github.com/Laud-ai/node-colonization
@@ -45,6 +45,11 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 | `src/l3.ts`–`src/l7.ts` | Layered features (fervor, survival, projects, flags/map, geopolitics) |
 | `src/runSim.ts` / `src/cli.ts` | Headless entry |
 | `src/ui/main.ts` + `index.html` | Lobby + play UI |
+| `src/ui/globe.ts` | 0.13.0 Solar view: three.js Moon/Mars globes (lazy `import()`), HUD markers, hover/click select. Reads the UI snapshot only, never sim state |
+| `src/ui/hudIcon.ts` | Level glyphs from the Sep 1 Moon Globe (L1 dot, L2–4 3-wedge, L5–9 6-wedge, L10+ rings) |
+| `src/ui/colonySites.ts` | Pure deterministic colony lat/lon (hash of seed + id, ≥10° spacing, stable across turns) |
+| `src/ui/textures/` | `moon.jpg` (NASA SVS CGI Moon Kit, LROC WAC), `mars.jpg` (Viking MDIM 2.1 colorized, NASA/JPL/USGS); imported via `?url` so they bundle into live + snapshot builds |
+| `src/ui/flags.ts` | Procedural flags + old solar map strip (kept under the globes) |
 | `scripts/snapshot.mjs` | Frozen version builds |
 | `tests/*.test.ts` | Node test suite (`npm test`) |
 | `.github/workflows/pages.yml` | CI test + build + GitHub Pages deploy |
@@ -59,7 +64,7 @@ npm run build
 npm run smoke
 ```
 
-`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → version iframe). Screenshot: `out/smoke/smoke.png`.
+`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → version iframes 0.9.0 and 0.12.0). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`.
 
 ## Release steps
 
@@ -73,4 +78,4 @@ npm run smoke
 
 ## Git
 
-Remote: `Laud-ai/node-colonization` (public). Default branch **main**. Tags mark frozen points (`v0.12.0` = baseline L7). Prefer small commits after each playable change.
+Remote: `Laud-ai/node-colonization` (public). Default branch **main**. Tags mark frozen points (`v0.12.0` = baseline L7, `v0.13.0` = globes). Prefer small commits after each playable change.

@@ -1,4 +1,6 @@
 import { flagSvg, solarMapSvg } from "./flags.js";
+import { SiteBook } from "./colonySites.js";
+import type { GlobeMarker, GlobeView } from "./globe.js";
 import {
   GameSession,
   randomSeed,
@@ -129,6 +131,7 @@ function beginSimulation(): void {
   const liveSolar = document.getElementById("solarVariantLive");
   if (liveSolar) liveSolar.textContent = session.solarVariantId;
 
+  sites = null;
   showPhase("playing");
   render();
 }
@@ -178,6 +181,7 @@ function render(): void {
   renderIndependents(snap);
   renderColonies(snap);
   renderSolarMap(snap);
+  renderGlobes(snap);
   renderDetail(snap);
   renderLogistics(snap);
   renderMoves(snap);
@@ -248,6 +252,59 @@ function renderSolarMap(snap: UiSnapshot): void {
     snap.colonies.map((c) => ({ id: c.id, name: c.name, body: c.body, nationColor: c.nationColor || "#64748b", independent: c.independent, projects: c.projectsDone })),
     snap.bodyTF as Record<string, number>, snap.selectedId);
 }
+// --- 0.13.0 Moon / Mars globes (render reads the UI snapshot only) ---
+let sites: SiteBook | null = null;
+let globes: { Moon: GlobeView; Mars: GlobeView } | null = null;
+let globesLoading = false;
+function selectFromGlobe(id: string): void {
+  if (!session) return;
+  session.select(id);
+  render();
+  document.querySelector(`#colonies .colony[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" });
+}
+function renderGlobes(snap: UiSnapshot): void {
+  if (!globes) {
+    if (!globesLoading) {
+      globesLoading = true;
+      $("globeStatus").textContent = "Loading globes…";
+      import("./globe.js").then(({ GlobeView }) => {
+        globes = { Moon: new GlobeView($("globeMoon"), "Moon", selectFromGlobe), Mars: new GlobeView($("globeMars"), "Mars", selectFromGlobe) };
+        $("globeStatus").textContent = "";
+        if (session) renderGlobes(session.snapshot());
+      }).catch((err: unknown) => {
+        console.warn("Globe view unavailable", err);
+        $("globeStatus").textContent = "3D globes unavailable in this browser (WebGL) — the solar map strip below still shows colonies.";
+        $("solarMapCard").hidden = false;
+      });
+    }
+    return;
+  }
+  if (!sites || sites.seed !== snap.seed) sites = new SiteBook(snap.seed);
+  const placed = sites.place(snap.colonies.map((c) => ({ id: c.id, body: c.body })));
+  const by: Record<"Moon" | "Mars", GlobeMarker[]> = { Moon: [], Mars: [] };
+  for (const c of snap.colonies) {
+    const site = placed.get(c.id)!;
+    const ideo = c.ideology.length ? c.ideology.join(" / ") : "—";
+    by[c.body].push({
+      id: c.id, lat: site.lat, lon: site.lon, level: c.level, color: c.nationColor || "#64748b",
+      info: [
+        c.name,
+        `L${c.level} · ${c.body} · ${c.independent ? "Independent" : c.patron}`,
+        `RP ${c.rp} · Nation RP ${c.nationRp}${c.independent ? "" : ` · Fervor ${c.fervor}`}`,
+        `Ideology: ${ideo}`,
+      ],
+    });
+  }
+  globes.Moon.update(by.Moon, snap.selectedId);
+  globes.Mars.update(by.Mars, snap.selectedId);
+}
+document.querySelector(".globe-modes")?.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("[data-globe-mode]") as HTMLElement | null;
+  if (!btn?.dataset.globeMode) return;
+  document.querySelectorAll(".globe-modes [data-globe-mode]").forEach((b) => b.classList.toggle("selected", b === btn));
+  $("globeWrap").className = `globe-wrap mode-${btn.dataset.globeMode}`;
+});
+
 function renderColonies(snap: UiSnapshot): void {
   $("colonies").innerHTML = snap.colonies.map((c) => {
     const classes = ["colony", c.isActing ? "active" : "", c.id === snap.selectedId ? "selected" : "", c.acted ? "acted-dim" : ""].filter(Boolean).join(" ");
@@ -506,6 +563,7 @@ $("colonies").addEventListener("click", (e) => {
   if (!t?.dataset.id) return;
   session.select(t.dataset.id);
   render();
+  if (globes) { globes.Moon.focus(t.dataset.id) || globes.Mars.focus(t.dataset.id); }
 });
 $("solarMap").addEventListener("click", (e) => {
   const id = (e.target as Element).getAttribute?.("data-id");
