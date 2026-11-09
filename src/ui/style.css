@@ -767,3 +767,59 @@ th {
 .globe-credit { margin-top: 4px; font-size: 10px; opacity: 0.7; }
 @media (max-width: 800px) { .globe-wrap.mode-both { grid-template-columns: 1fr; height: 640px; } }
 .pin-legend { font-size: 11px; opacity: 0.8; margin: 0 0 6px; }
+
+/* 0.14.0 — map-first layout with side windows */
+.play-screen.map-first { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.play-screen.map-first[hidden] { display: none; }
+.topbar { padding: 6px 12px; gap: 10px; align-items: center; position: relative; }
+.topbar .brand h1 { font-size: 14px; }
+.topbar .meta { font-size: 12px; }
+.topbar .toolbar { gap: 6px; }
+.workspace { flex: 1; min-height: 0; display: flex; }
+.dock { width: 380px; flex: 0 0 380px; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; background: rgba(8, 11, 22, 0.6); }
+.dock.empty { display: none; }
+.dock-left { border-right: 1px solid var(--line); }
+.dock-right { border-left: 1px solid var(--line); }
+.map-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.map-stage .globe-card { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 6px; }
+.map-stage .globe-wrap, .map-stage .globe-wrap.mode-moon, .map-stage .globe-wrap.mode-mars { flex: 1; min-height: 260px; height: auto; }
+.map-stage .announcements { position: absolute; top: 48px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 70%; }
+.win { flex-shrink: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; }
+.win-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; background: var(--panel2); border-radius: 8px 8px 0 0; cursor: default; }
+.win-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold); }
+.win-btns button { padding: 0 6px; margin-left: 2px; font-size: 12px; line-height: 18px; }
+.win-body { padding: 8px; overflow: auto; max-height: 60vh; }
+.tray { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 8px; border-top: 1px solid var(--line); background: rgba(10, 14, 28, 0.85); }
+.tray[hidden] { display: none; }
+.tray-chip { font-size: 11px; padding: 2px 8px; }
+.win-menu-wrap { position: relative; }
+.window-menu { position: absolute; right: 0; top: 110%; z-index: 50; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-width: 240px; box-shadow: 0 8px 24px #0008; }
+.window-menu[hidden] { display: none; }
+.win-menu-row { display: block; padding: 3px 0; font-size: 13px; }
+
+/* Needs tree */
+.needs-tree svg { width: 100%; height: auto; display: block; }
+.needs-tree .nt-node { cursor: pointer; }
+.needs-tree .nt-node:hover rect { stroke: #2ee9f0; stroke-width: 2; }
+.nt-legend { font-size: 11px; margin: 4px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+.nt-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: -1px; }
+
+/* Supplier cards */
+.sup-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.sup-filter { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.sup-filter button { font-size: 11px; padding: 1px 6px; }
+.sup-filter button.missing { border-color: #dc2626; color: #fca5a5; }
+.sup-filter button.expand { border-color: #6b7280; color: #cbd5e1; }
+.sup-filter button.selected { outline: 1px solid #2ee9f0; }
+.sup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.sup-card { background: #0f1426; border: 1px solid var(--line); border-radius: 8px; padding: 6px; font-size: 11px; display: flex; flex-direction: column; gap: 3px; }
+.sup-card.blocked { opacity: 0.6; }
+.sup-card .sup-title { font-weight: 700; font-size: 12px; display: flex; justify-content: space-between; gap: 4px; }
+.sup-loc { font-size: 10px; padding: 0 5px; border-radius: 6px; background: #2a3558; white-space: nowrap; }
+.sup-loc.Earth { background: #1e3a5f; } .sup-loc.Moon { background: #4b5563; } .sup-loc.Mars { background: #7c2d12; }
+.sup-flag { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 4px 0; }
+.sup-res { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; border-radius: 50%; font-weight: 800; font-size: 10px; color: #0b1020; border: 2px solid #0b1020; }
+.sup-rel { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.sup-rel.own, .sup-rel.ally { color: #86efac; } .sup-rel.rival { color: #fca5a5; } .sup-rel.neutral { color: #cbd5e1; }
+.sup-block { color: #fca5a5; }
+.sup-card button { margin-top: 3px; font-size: 11px; }

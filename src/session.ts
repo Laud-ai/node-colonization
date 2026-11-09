@@ -1,4 +1,5 @@
 import { applyRules, type Rules } from "./rules.js";
+import { needsTree, listSuppliers, type TreeNode, type Supplier } from "./needs.js";
 import { mulberry32, type Rng } from "./rng.js";
 import {
   nationColorForColony, nationColorForEarth, nationRpEarth, leadingNation,
@@ -77,6 +78,7 @@ export interface NodeSummary {
   inUseStrained: NodeType[]; needed: NodeType[]; freeExcess: NodeType[];
   cleanImports: string[]; developed: string[];
 }
+export type { TreeNode, Supplier };
 export interface ColonySnap {
   id: string; name: string; patron: string; body: Body; bodyMod: number;
   specialty: NodeType; requires: NodeType; culture: string[]; ideology: string[];
@@ -477,6 +479,19 @@ export class GameSession {
   }
 
   getActing(): Colony | null { return getActingColony(this.state); }
+
+  /** 0.14.0 Needs tree for a colony (read-only). */
+  needsTree(id: string): TreeNode[] | null {
+    const c = this.state.colonies.find((x) => x.id === id);
+    return c ? needsTree(c) : null;
+  }
+
+  /** 0.14.0 Supplier cards; move keys only when `id` is the acting colony. */
+  suppliers(id: string, node: NodeType | null): Supplier[] {
+    const c = this.state.colonies.find((x) => x.id === id);
+    if (!c) return [];
+    return listSuppliers(this.state, c, node, getActingColony(this.state)?.id === id);
+  }
 
   select(id: string): void {
     if (this.state.colonies.some((c) => c.id === id)) this.selectedId = id;

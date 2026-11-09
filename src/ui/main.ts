@@ -2,6 +2,9 @@ import { flagSvg, solarMapSvg } from "./flags.js";
 import { SiteBook } from "./colonySites.js";
 import type { GlobeMarker, GlobeView, MarkerStyle } from "./globe.js";
 import { SPECIALTY_CODE } from "./pinIcon.js";
+import { initWindows, openWindow, isOpen } from "./windows.js";
+import { needsTreeHtml, suppliersHtml } from "./needsView.js";
+import type { NodeType } from "../types.js";
 import {
   GameSession,
   randomSeed,
@@ -184,6 +187,8 @@ function render(): void {
   renderSolarMap(snap);
   renderGlobes(snap);
   renderDetail(snap);
+  renderNeeds(snap);
+  renderSuppliers(snap);
   renderLogistics(snap);
   renderMoves(snap);
   renderLog(snap);
@@ -273,6 +278,7 @@ document.querySelector(".marker-styles")?.addEventListener("click", (e) => {
 function selectFromGlobe(id: string): void {
   if (!session) return;
   session.select(id);
+  openWindow("needs");
   render();
   document.querySelector(`#colonies .colony[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" });
 }
@@ -332,6 +338,46 @@ document.querySelector(".globe-modes")?.addEventListener("click", (e) => {
   if (!btn?.dataset.globeMode) return;
   document.querySelectorAll(".globe-modes [data-globe-mode]").forEach((b) => b.classList.toggle("selected", b === btn));
   $("globeWrap").className = `globe-wrap mode-${btn.dataset.globeMode}`;
+});
+
+// --- 0.14.0 Needs tree + suppliers ---
+let supplierFilter: NodeType | null = null;
+let supplierFor: string | null = null;
+function renderNeeds(snap: UiSnapshot): void {
+  const el = document.getElementById("needsTree");
+  if (!el || !session) return;
+  const sel = snap.selected;
+  if (!sel) { el.textContent = "Select a colony (click a pin or a colony card)."; return; }
+  const tree = session.needsTree(sel.id);
+  if (!tree) return;
+  el.innerHTML = needsTreeHtml(tree, { name: sel.name, color: sel.nationColor || "#64748b", requires: sel.requires });
+}
+function renderSuppliers(snap: UiSnapshot): void {
+  const el = document.getElementById("suppliers");
+  if (!el || !session) return;
+  const sel = snap.selected;
+  if (!sel) { el.textContent = "Select a colony."; return; }
+  if (supplierFor !== sel.id) { supplierFor = sel.id; supplierFilter = null; }
+  if (!isOpen("suppliers")) return; // computed only when visible (keeps turns fast)
+  const tree = session.needsTree(sel.id) ?? [];
+  const chips = tree.filter((t) => t.state === "missing" || t.state === "expand").map((t) => ({ node: t.node, state: t.state }));
+  const list = session.suppliers(sel.id, supplierFilter);
+  el.innerHTML = suppliersHtml(list, sel.name, supplierFilter, chips, snap.actingId === sel.id);
+}
+document.getElementById("needsTree")?.addEventListener("click", (e) => {
+  const n = (e.target as Element).closest?.("[data-node]")?.getAttribute("data-node");
+  if (!n || !session) return;
+  supplierFilter = n as NodeType;
+  openWindow("suppliers");
+  render();
+});
+document.getElementById("suppliers")?.addEventListener("click", (e) => {
+  if (!session) return;
+  const t = e.target as HTMLElement;
+  const key = t.closest("[data-move-key]")?.getAttribute("data-move-key");
+  if (key) { session.applyByKey(key); render(); return; }
+  const nb = t.closest("[data-sup-node]");
+  if (nb) { const v = nb.getAttribute("data-sup-node"); supplierFilter = v ? (v as NodeType) : null; render(); }
 });
 
 function renderColonies(snap: UiSnapshot): void {
@@ -422,6 +468,7 @@ function renderDetail(snap: UiSnapshot): void {
   const clockDetail = clockDetailBits.length
     ? `<div class="tags need">${clockDetailBits.map(esc).join(" · ")}</div>` : "";
   el.innerHTML = `
+    <div class="tags"><button type="button" data-open-needs>🌳 Needs tree &amp; suppliers</button></div>
     <div class="detail-head">
       <div class="name">
         <span class="editable-name" contenteditable="true" spellcheck="false"
@@ -630,6 +677,9 @@ if (thrInput) {
   });
 }
 
+$("detail").addEventListener("click", (e) => {
+  if ((e.target as HTMLElement).closest("[data-open-needs]")) { openWindow("needs"); openWindow("suppliers"); render(); }
+});
 $("detail").addEventListener("keydown", (e) => {
   const t = e.target as HTMLElement;
   if (!t?.getAttribute?.("data-edit")) return;
@@ -647,6 +697,8 @@ $("detail").addEventListener("focusout", (e) => {
   if (!session) return;
   commitEditable(t);
 });
+
+initWindows(() => { if (uiPhase === "playing" && session) render(); });
 
 // Boot into setup lobby (do not auto-start a game).
 showPhase("setup");

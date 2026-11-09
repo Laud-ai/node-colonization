@@ -88,6 +88,26 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   await page.locator('[data-marker-style="pin"]').click();
   await page.locator('[data-globe-mode="both"]').click();
 
+  // 0.14.0 map-first: needs tree → supplier menu, minimize/restore a window
+  const needsWin = page.locator('.win[data-win="needs"]');
+  await expect(needsWin).toBeVisible();
+  await expect(page.locator("#needsTree svg .nt-node").first()).toBeVisible();
+  expect(await page.locator("#needsTree .nt-node").count()).toBe(19);
+  await expect(page.locator('#needsTree .nt-node[data-state="missing"]').first()).toBeVisible();
+  await needsWin.screenshot({ path: path.join(smokeDir, "needs-tree.png") });
+  await page.locator('#needsTree .nt-node[data-state="missing"]').first().click();
+  const supWin = page.locator('.win[data-win="suppliers"]');
+  await expect(supWin).toBeVisible();
+  await expect(page.locator("#suppliers .sup-head")).toContainText("choices");
+  await page.locator('#suppliers button[data-sup-node=""]').click();
+  await expect(page.locator("#suppliers .sup-head")).toContainText("All needs");
+  await supWin.screenshot({ path: path.join(smokeDir, "suppliers.png") });
+  await needsWin.locator('[data-win-act="min"]').click();
+  await expect(needsWin).toBeHidden();
+  await page.locator('#tray [data-restore="needs"]').click();
+  await expect(needsWin).toBeVisible();
+  await page.screenshot({ path: path.join(smokeDir, "map-first.png") });
+
   // Back to lobby for version picker
   await page.locator("#btnNew").click();
   await expect(page.locator("#setupScreen")).toBeVisible();

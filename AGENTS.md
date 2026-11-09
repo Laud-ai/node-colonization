@@ -1,6 +1,6 @@
 # AGENTS.md — Node Colonization
 
-Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.13.1** (L7 + 3D Moon/Mars globes with pin markers).
+Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.14.0** (L7 + map-first globes, pins, needs tree, suppliers).
 
 **Live (GitHub Pages):** https://laud-ai.github.io/node-colonization/  
 **Repo:** https://github.com/Laud-ai/node-colonization
@@ -43,8 +43,11 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 | `src/rules.ts` | Live rule flags (Rules tab) |
 | `src/fervorVariants.ts` / `src/solarBlocVariants.ts` | Lobby presets |
 | `src/l3.ts`–`src/l7.ts` | Layered features (fervor, survival, projects, flags/map, geopolitics) |
+| `src/needs.ts` | 0.14.0 read-only analysis: `missingNodes`, `noStrainExpansions` (engine `strainOf` on a copy), `needsTree`, `listSuppliers` + `compareSuppliers` (uses `findSources`/`listMoves`/`rankTradeSource`) |
 | `src/runSim.ts` / `src/cli.ts` | Headless entry |
-| `src/ui/main.ts` + `index.html` | Lobby + play UI |
+| `src/ui/main.ts` + `index.html` | Lobby + play UI (0.14.0 map-first: globes fill the stage, panels are `.win` side windows) |
+| `src/ui/windows.ts` | Side-window manager: dock left/right, minimize to tray, close/reopen via Windows menu, layout in localStorage `nc.layout.v1` |
+| `src/ui/needsView.ts` | Needs tree SVG + supplier cards HTML |
 | `src/ui/globe.ts` | 0.13.0 Solar view: three.js Moon/Mars globes (lazy `import()`), HUD markers, hover/click select. Reads the UI snapshot only, never sim state |
 | `src/ui/pinIcon.ts` | 0.13.1 pin heads (bloc color, level number, fervor ring, specialty badge, alerts), stem tiers, halo helper |
 | `src/ui/hudIcon.ts` | Level glyphs from the Sep 1 Moon Globe (L1 dot, L2–4 3-wedge, L5–9 6-wedge, L10+ rings) |
@@ -65,7 +68,7 @@ npm run build
 npm run smoke
 ```
 
-`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → pins default + glyph toggle → version iframes 0.9.0 and 0.12.0). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`, `pins-closeup.png`, `glyphs-closeup.png`.
+`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → pins default + glyph toggle → needs tree → supplier menu → minimize/restore a window → version iframes 0.9.0 and 0.12.0). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`, `pins-closeup.png`, `glyphs-closeup.png`, `needs-tree.png`, `suppliers.png`, `map-first.png`.
 
 ## Release steps
 
@@ -79,4 +82,4 @@ npm run smoke
 
 ## Git
 
-Remote: `Laud-ai/node-colonization` (public). Default branch **main**. Tags mark frozen points (`v0.12.0` = baseline L7, `v0.13.0` = globes, `v0.13.1` = pins). Prefer small commits after each playable change.
+Remote: `Laud-ai/node-colonization` (public). Default branch **main**. Tags mark frozen points (`v0.12.0` = baseline L7, `v0.13.0` = globes, `v0.13.1` = pins, `v0.14.0` = needs tree / suppliers / map-first). Prefer small commits after each playable change.

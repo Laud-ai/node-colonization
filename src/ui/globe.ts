@@ -317,6 +317,9 @@ export class GlobeView {
     if (size.x !== w || size.y !== h) {
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / h;
+      // Narrow (side-by-side) views: widen vertical FOV so the whole globe fits horizontally.
+      const half = THREE.MathUtils.degToRad(20);
+      this.camera.fov = w >= h ? 40 : THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(half) / (w / h)));
       this.camera.updateProjectionMatrix();
     }
     this.controls.update();
