@@ -5,6 +5,7 @@
  * Read-only: receives plain marker data from the UI; never touches sim state.
  * Loaded lazily (dynamic import) so three.js + textures only load when playing.
  */
+import { svgDataUrl } from "./svgUrl.js";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { clampLevel, drawHudIcon, worldPlaneSize } from "./hudIcon.js";
@@ -22,6 +23,8 @@ export interface GlobeMarker {
   /** 0.13.1 pin fields. */
   independent: boolean; fervor: number | null; specialty: NodeType;
   alert: boolean; war: boolean; fresh: boolean;
+  /** 0.15.2 the colony's own flag (small-mode SVG), shown on the pin as its primary identity. */
+  flagSvg?: string;
 }
 
 const RADIUS = 1;
@@ -53,7 +56,12 @@ interface Pin {
   m: GlobeMarker; root: THREE.Group; pickables: THREE.Object3D[]; key: string;
   textures: THREE.Texture[]; materials: THREE.Material[]; geos: THREE.BufferGeometry[];
   alert?: THREE.Sprite;
+  /** Screen-space anchor used for route-label declutter. */
+  head?: THREE.Object3D;
 }
+/** 0.15.2 flag sizes (sizeAttenuation=false units): the colony's own flag is clearly larger than trade-partner flags. */
+const PIN_FLAG_W = 0.046;
+const ROUTE_FLAG_W = 0.026;
 const PIN_HEAD_PX = 128;
 const PIN_SCALE = 0.095;
 
@@ -125,7 +133,7 @@ export class GlobeView {
     this.canvas.addEventListener("pointerup", (e) => {
       if (Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5) return;
       const id = this.pick(e);
-      if (id) this.onSelect(id);
+      if (id && !id.startsWith("route:")) this.onSelect(id);
     });
     this.canvas.addEventListener("pointermove", (e) => this.hover(e));
     this.canvas.addEventListener("pointerleave", () => { this.hoverId = null; this.tip.hidden = true; this.canvas.style.cursor = ""; });
@@ -150,6 +158,63 @@ export class GlobeView {
   private routeRoot = new THREE.Group();
   private routeKey = "";
   private routeDisposables: { dispose(): void }[] = [];
+  private routeLabels: THREE.Sprite[] = [];
+  private routeTips = new Map<string, { lines: string[]; color: string }>();
+
+  /**
+   * 0.15.2 flag → canvas texture (96×64 flag, optional coloured frame). Loads async; onDone reports
+   * success and how many opaque pixels the flag area got (smoke checks the flags really render).
+   */
+  private flagTexture(svg: string | undefined, frame: string | null, onDone?: (ok: boolean, inked: number) => void): { tex: THREE.CanvasTexture } {
+    const pad = frame ? 8 : 0, fw = 96, fh = 64;
+    const canvas = document.createElement("canvas");
+    canvas.width = fw + pad * 2; canvas.height = fh + pad * 2;
+    const ctx = canvas.getContext("2d")!;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const drawFrame = () => {
+      if (!frame) return;
+      ctx.fillStyle = frame;
+      ctx.beginPath(); ctx.roundRect(0, 0, canvas.width, canvas.height, 8); ctx.fill();
+    };
+    drawFrame();
+    tex.needsUpdate = true;
+    if (!svg) return { tex };
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawFrame();
+      ctx.drawImage(img, pad, pad, fw, fh);
+      let inked = 0;
+      try {
+        const d = ctx.getImageData(pad, pad, fw, fh).data;
+        for (let i = 3; i < d.length; i += 4 * 7) if (d[i]! > 200) inked++;
+      } catch { inked = 1; }
+      tex.needsUpdate = true;
+      onDone?.(true, inked);
+    };
+    img.onerror = () => onDone?.(false, 0);
+    img.src = svgDataUrl(svg);
+    return { tex };
+  }
+
+  /** Colony's own flag sprite (pins: hangs from the stem just under the fervor ring; glyphs: beside the glyph). */
+  private pinFlag(pin: Pin, m: GlobeMarker, at: THREE.Vector3, w: number, centre: [number, number]): void {
+    if (!m.flagSvg) return;
+    const { tex } = this.flagTexture(m.flagSvg, null, (ok) => {
+      const k = ok ? "pinFlagsLoaded" : "pinFlagsFailed";
+      this.el.dataset[k] = String(Number(this.el.dataset[k] || 0) + 1);
+    });
+    const mat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, transparent: true });
+    const fl = new THREE.Sprite(mat);
+    fl.position.copy(at);
+    fl.scale.set(w, (w * 2) / 3, 1);
+    fl.center.set(centre[0], centre[1]);
+    fl.renderOrder = 4;
+    pin.root.add(fl);
+    pin.pickables.push(fl);
+    pin.textures.push(tex); pin.materials.push(mat);
+  }
 
   /** 0.14.1 trade routes: regional arcs across the surface, outer lines into space with a flag label. */
   setRoutes(routes: GlobeRoute[], visible: boolean): void {
@@ -170,6 +235,10 @@ export class GlobeView {
       c.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
       this.routeRoot.add(c);
     };
+    let flagTotal = 0, flagLoaded = 0, flagFailed = 0, minInk = Infinity;
+    this.el.dataset.routeFlagsLoaded = "0"; this.el.dataset.routeFlagsFailed = "0";
+    this.routeLabels = [];
+    this.routeTips.clear();
     for (const r of routes) {
       const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(r.color) });
       this.routeDisposables.push(mat);
@@ -205,41 +274,29 @@ export class GlobeView {
         this.routeRoot.add(new THREE.Mesh(geo, mat));
         if (r.inbound || r.twoWay) cone(mat, start.clone().add(dir.clone().multiplyScalar(0.06)), dir.clone().negate());
         if (!r.inbound || r.twoWay) cone(mat, end.clone(), dir);
-        // Flag + label at the far end
-        const cw = 256, ch = 80;
-        const canvas = document.createElement("canvas");
-        canvas.width = cw; canvas.height = ch;
-        const ctx = canvas.getContext("2d")!;
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        const paint = (img?: HTMLImageElement) => {
-          ctx.clearRect(0, 0, cw, ch);
-          ctx.fillStyle = "rgba(8,12,22,0.85)";
-          ctx.strokeStyle = r.color; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.roundRect(2, 2, cw - 4, ch - 4, 10); ctx.fill(); ctx.stroke();
-          if (img) ctx.drawImage(img, 10, 14, 72, 48);
-          ctx.fillStyle = "#e8eefc"; ctx.font = "700 22px system-ui, sans-serif"; ctx.textBaseline = "top";
-          ctx.fillText(`${r.inbound ? "←" : "→"} ${r.otherBody ?? ""}`, 92, 12);
-          ctx.font = "16px system-ui, sans-serif"; ctx.fillStyle = "#cbd5e1";
-          ctx.fillText((r.label ?? "").slice(0, 22), 92, 44);
-          tex.needsUpdate = true;
-        };
-        paint();
-        if (r.flagSvg) {
-          const img = new Image();
-          img.onload = () => paint(img);
-          img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.flagSvg.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" '));
-        }
+        // 0.15.2: small partner flag framed in the route colour at the far end; text on hover.
+        const tip = [`${r.inbound ? "←" : "→"} ${r.otherBody ?? ""}`, r.label ?? ""];
+        const { tex } = this.flagTexture(r.flagSvg, r.color, (ok, inked) => {
+          if (ok) { flagLoaded++; minInk = Math.min(minInk, inked); } else flagFailed++;
+          this.el.dataset.routeFlagsLoaded = String(flagLoaded);
+          this.el.dataset.routeFlagsFailed = String(flagFailed);
+          this.el.dataset.routeFlagMinInk = String(minInk === Infinity ? 0 : minInk);
+        });
+        if (r.flagSvg) flagTotal++;
         const smat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, transparent: true });
         const sprite = new THREE.Sprite(smat);
-        sprite.position.copy(end.clone().add(dir.clone().multiplyScalar(0.05)));
-        sprite.scale.set(0.2, 0.0625, 1);
-        sprite.renderOrder = 5;
+        sprite.position.copy(end.clone().add(dir.clone().multiplyScalar(0.03)));
+        sprite.scale.set(ROUTE_FLAG_W * 1.17, ROUTE_FLAG_W * 0.83, 1);
+        sprite.renderOrder = 3; // below pin heads/flags (4)
+        sprite.userData.routeId = `route:${r.id}`;
+        this.routeTips.set(`route:${r.id}`, { lines: tip, color: r.color });
+        this.routeLabels.push(sprite);
         this.routeRoot.add(sprite);
         this.routeDisposables.push(tex, smat);
       }
     }
     this.el.dataset.routes = String(routes.length);
+    this.el.dataset.routeFlags = String(flagTotal);
   }
 
   private style: MarkerStyle = "pin";
@@ -259,7 +316,7 @@ export class GlobeView {
     for (const m of markers) {
       const sel = m.id === selectedId;
       const key = [this.style, clampLevel(m.level), m.color, sel, m.independent, m.fervor === null ? "-" : Math.round(m.fervor * 20),
-        m.specialty, m.alert, m.war, m.fresh, m.lat.toFixed(3), m.lon.toFixed(3)].join("|");
+        m.specialty, m.alert, m.war, m.fresh, m.lat.toFixed(3), m.lon.toFixed(3), m.flagSvg ?? ""].join("|");
       const old = this.pins.get(m.id);
       if (old && old.key === key) { old.m = m; continue; }
       if (old) this.dispose(old, m.id);
@@ -317,7 +374,10 @@ export class GlobeView {
     mesh.scale.set(s, s, 1);
     const root = new THREE.Group();
     root.add(mesh);
-    return { m, root, pickables: [mesh], key: "", textures: [tex], materials: [mat], geos: [] };
+    const pin: Pin = { m, root, pickables: [mesh], key: "", textures: [tex], materials: [mat], geos: [], head: mesh };
+    // 0.15.2 own flag beside the glyph (to the right)
+    this.pinFlag(pin, m, pos, PIN_FLAG_W * 0.8 * (sel ? 1.15 : 1), [-0.35, 0.5]);
+    return pin;
   }
 
   private buildPin(m: GlobeMarker, sel: boolean): Pin {
@@ -354,7 +414,11 @@ export class GlobeView {
     head.scale.set(sc, sc, 1);
     head.renderOrder = 4;
     root.add(shadow, stem, foot, head);
-    const pin: Pin = { m, root, pickables: [head], key: "", textures: [tex], materials: [stemMat, shadowMat, footMat, headMat], geos: [stemGeo, sleeveGeo, footGeo] };
+    const pin: Pin = { m, root, pickables: [head], key: "", textures: [tex], materials: [stemMat, shadowMat, footMat, headMat], geos: [stemGeo, sleeveGeo, footGeo], head };
+    // 0.15.2 own flag: a pennant flying right from the stem just below the fervor ring (badge is top-right,
+    // swords bottom-left, so the lower-right is free). Top-left corner sits 0.40·head below / 0.06·head right of the tip.
+    const fw = PIN_FLAG_W * (sel ? 1.2 : 1), fh = (fw * 2) / 3;
+    this.pinFlag(pin, m, tip, fw, [-(sc * 0.06) / fw, 1 + (sc * 0.4) / fh]);
     if (m.alert) {
       const atex = this.canvasTex(PIN_HEAD_PX, (ctx) => drawAlertRing(ctx, PIN_HEAD_PX));
       const amat = new THREE.SpriteMaterial({ map: atex, sizeAttenuation: false, depthWrite: false, transparent: true });
@@ -383,10 +447,11 @@ export class GlobeView {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.camera);
-    const hits = this.ray.intersectObjects([this.sphere, ...[...this.pins.values()].flatMap((p) => p.pickables)], false);
+    const labels = this.routeRoot.visible ? this.routeLabels.filter((s) => (s.material as THREE.SpriteMaterial).opacity > 0.5) : [];
+    const hits = this.ray.intersectObjects([this.sphere, ...[...this.pins.values()].flatMap((p) => p.pickables), ...labels], false);
     for (const h of hits) {
       if (h.object === this.sphere) break; // marker behind the globe
-      const id = h.object.userData.id as string | undefined;
+      const id = (h.object.userData.id ?? h.object.userData.routeId) as string | undefined;
       if (id) return id;
     }
     return null;
@@ -396,14 +461,16 @@ export class GlobeView {
     const id = this.pick(e);
     this.canvas.style.cursor = id ? "pointer" : "";
     if (!id) { this.hoverId = null; this.tip.hidden = true; return; }
-    const p = this.pins.get(id)!;
     if (this.hoverId !== id) {
       this.hoverId = id;
+      const rt = this.routeTips.get(id);
+      const lines = rt ? rt.lines : this.pins.get(id)!.m.info;
+      const color = rt ? rt.color : this.pins.get(id)!.m.color;
       this.tip.innerHTML = "";
-      p.m.info.forEach((line, i) => {
+      lines.forEach((line, i) => {
         const d = document.createElement("div");
         d.textContent = line;
-        if (i === 0) { d.className = "globe-tip-title"; d.style.borderLeftColor = p.m.color; }
+        if (i === 0) { d.className = "globe-tip-title"; d.style.borderLeftColor = color; }
         this.tip.append(d);
       });
     }
@@ -431,7 +498,27 @@ export class GlobeView {
     for (const p of this.pins.values()) {
       if (p.alert) (p.alert.material as THREE.SpriteMaterial).opacity = 0.25 + 0.75 * Math.abs(Math.sin(t * 2.6));
     }
+    this.declutterRoutes(h);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** 0.15.2: partner flags fade when they sit on a pin head/flag or on an earlier label (never cover markers). */
+  private declutterRoutes(h: number): void {
+    if (!this.routeLabels.length || !this.routeRoot.visible) return;
+    const k = h / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)); // px per sprite unit
+    const v = new THREE.Vector3();
+    const toPx = (o: THREE.Object3D) => { o.getWorldPosition(v).project(this.camera); return { x: v.x * h, y: v.y * h, z: v.z }; };
+    const heads = [...this.pins.values()].map((p) => p.head ? toPx(p.head) : null).filter((x): x is { x: number; y: number; z: number } => !!x);
+    const headR = PIN_SCALE * 0.42 * k + PIN_FLAG_W * k; // ring + own flag
+    const labR = ROUTE_FLAG_W * 0.6 * k;
+    const placed: { x: number; y: number }[] = [];
+    for (const s of this.routeLabels) {
+      const p = toPx(s);
+      const hitPin = heads.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < headR + labR);
+      const hitLab = placed.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < labR * 1.6);
+      (s.material as THREE.SpriteMaterial).opacity = hitPin ? 0.18 : hitLab ? 0.45 : 1;
+      if (!hitPin) placed.push(p);
+    }
   }
 
   private dispose(p: Pin, id: string): void {

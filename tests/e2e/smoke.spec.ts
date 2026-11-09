@@ -80,6 +80,11 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, -300); await page.waitForTimeout(80); }
   await page.waitForTimeout(500);
   await page.locator("#globeMoon").screenshot({ path: path.join(smokeDir, "pins-closeup.png") });
+  // 0.15.2: each pin carries its colony's own flag
+  await expect.poll(async () => Number(await page.locator("#globeMoon").getAttribute("data-pin-flags-loaded") ?? 0)).toBeGreaterThan(0);
+  await page.mouse.move(mbox.x + 4, mbox.y + mbox.height - 4); // no tooltip over the pins
+  await page.waitForTimeout(300);
+  await page.locator("#globeMoon").screenshot({ path: path.join(smokeDir, "pin-flag-closeup.png") });
   await page.locator('[data-marker-style="glyph"]').click();
   await expect(page.locator('[data-marker-style="glyph"]')).toHaveClass(/selected/);
   await page.waitForTimeout(300);
@@ -126,6 +131,14 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
     + Number(await page.locator("#globeMars").getAttribute("data-routes"))).toBeGreaterThan(0);
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(smokeDir, "routes-late-game.png") });
+  // 0.15.2: route-label partner flags really render (image loaded, none failed, flag pixels inked)
+  for (const g of ["#globeMoon", "#globeMars"]) {
+    const el = page.locator(g);
+    const total = Number(await el.getAttribute("data-route-flags") ?? 0);
+    await expect.poll(async () => Number(await el.getAttribute("data-route-flags-loaded") ?? 0)).toBe(total);
+    expect(Number(await el.getAttribute("data-route-flags-failed") ?? 0)).toBe(0);
+    if (total > 0) expect(Number(await el.getAttribute("data-route-flag-min-ink") ?? 0)).toBeGreaterThan(100);
+  }
   // 0.15.0: vexillological flags on colony cards and the map strip
   expect(await page.locator("#colonies svg.flag").count()).toBeGreaterThan(0);
   if (await page.locator("#solarMapCard").isVisible()) expect(await page.locator("#solarMap svg.flag").count()).toBeGreaterThan(0);

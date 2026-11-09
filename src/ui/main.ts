@@ -335,6 +335,7 @@ function renderGlobes(snap: UiSnapshot): void {
       id: c.id, lat: site.lat, lon: site.lon, level: c.level, color: c.nationColor || "#64748b",
       independent: c.independent, fervor: c.independent ? null : Math.max(0, c.fervor) / thr,
       specialty: c.specialty, alert: need, war: c.atWar, fresh,
+      flagSvg: flagDesignToSvg(c.flag, 30, 20),
       info: [
         c.name,
         `L${c.level} · ${c.body} · ${c.independent ? "Independent" : c.patron}`,

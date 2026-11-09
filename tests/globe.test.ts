@@ -48,3 +48,12 @@ test("0.15.1 fervor non-colour cue: 1/2/3 lit segments + dashed ring when critic
   assert.deepEqual(fervorCue(0.95), { segments: 3, critical: true });
   assert.deepEqual(fervorCue(2), { segments: 3, critical: true });
 });
+
+test("0.15.2 svgDataUrl never duplicates xmlns (Firefox rejected the route-label flags)", async () => {
+  const { svgDataUrl } = await import("../src/ui/svgUrl.js");
+  const { blocFlag, flagDesignToSvg } = await import("../src/flagDesign.js");
+  const count = (u: string) => (decodeURIComponent(u).match(/xmlns="/g) ?? []).length;
+  assert.equal(count(svgDataUrl(flagDesignToSvg(blocFlag("United States"), 30, 20))), 1);
+  assert.equal(count(svgDataUrl('<svg width="3" height="2"></svg>')), 1);
+  assert.equal(count(svgDataUrl('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>')), 1);
+});
