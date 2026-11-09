@@ -802,7 +802,7 @@ th {
 .needs-tree .nt-node { cursor: pointer; }
 .needs-tree .nt-node:hover rect { stroke: #2ee9f0; stroke-width: 2; }
 .nt-legend { font-size: 11px; margin: 4px 0; display: flex; gap: 10px; flex-wrap: wrap; }
-.nt-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: -1px; }
+.nt-legend i { display: inline-block; width: 12px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: -1px; box-sizing: border-box; }
 
 /* Supplier cards */
 .sup-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }

@@ -15,7 +15,12 @@ import { nationColorForColony, nationColorForEarth, sameNation } from "./nation.
 import type { FlagDesign } from "./flagDesign.js";
 import { flagForColony, flagForEarth } from "./flagLineage.js";
 
-export type NeedState = "have" | "missing" | "expand" | "none";
+/**
+ * 0.15.3 needs-tree states (Tiago): specialty (blue), developed (green), imported (yellow),
+ * missing (red), no-stress expansion (grey). "locked" = not owned, not required and not yet
+ * expandable without strain (deps missing) — the only remaining catch-all.
+ */
+export type NeedState = "specialty" | "developed" | "imported" | "missing" | "expand" | "locked";
 
 /** Strain the colony would carry if it developed +1 of `n` (pure: works on a copy). */
 export function strainIfDeveloped(c: Colony, n: NodeType): number {
@@ -52,6 +57,21 @@ export function nodeDepth(n: NodeType, seen: NodeType[] = []): number {
 export interface TreeNode {
   node: NodeType; state: NeedState; depth: number; deps: NodeType[];
   count: number; source: string; why: string;
+  /** Owned but under-covered for what depends on it (counts toward strain). */
+  short: boolean;
+  /** Owned node that is (also) imported via trade/logistics. */
+  imported: number;
+}
+
+/** Pure classifier (exported for tests). Owned states win; then missing, expansion, locked. */
+export function classifyNeed(c: Colony, n: NodeType, miss: Set<NodeType>, grey: Set<NodeType>): NeedState {
+  const count = extras(c, n);
+  if (n === c.specialty) return "specialty";
+  if ((c.developed[n] || 0) > 0) return "developed";
+  if (count > 0) return "imported";
+  if (miss.has(n)) return "missing";
+  if (grey.has(n)) return "expand";
+  return "locked";
 }
 
 export function needsTree(c: Colony): TreeNode[] {
@@ -61,7 +81,7 @@ export function needsTree(c: Colony): TreeNode[] {
   return NODES.map((n) => {
     const count = extras(c, n);
     const has = count > 0;
-    const state: NeedState = n === c.requires ? "missing" : miss.has(n) ? "missing" : has ? "have" : grey.has(n) ? "expand" : "none";
+    const state = classifyNeed(c, n, miss, grey);
     const src: string[] = [];
     if (c.specialty === n) src.push("specialty");
     if ((c.developed[n] || 0) > 0) src.push(`developed×${c.developed[n]}`);
@@ -76,7 +96,9 @@ export function needsTree(c: Colony): TreeNode[] {
       const md = missingDepsOf(c, n);
       why = md.length ? `strained (missing ${md.join(", ")})` : "covered";
     }
-    return { node: n, state, depth: nodeDepth(n), deps: [...(DEPS[n] || [])], count, source: src.join(" + "), why };
+    if (!why && state === "locked") why = `locked: develop ${(DEPS[n] || []).filter((d) => extras(c, d) <= 0).join(", ") || "deps"} first`;
+    const short = has && (need[n] || 0) > count;
+    return { node: n, state, depth: nodeDepth(n), deps: [...(DEPS[n] || [])], count, source: src.join(" + "), why, short, imported: Math.max(0, imp) };
   });
 }
 

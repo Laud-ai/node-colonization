@@ -1,0 +1,7 @@
+# 0.15.3 — Needs tree colours, upward tree, no clipping through the bodies
+
+Tiago: "needs tree changes. boxes are all in 'other' state, colony specialty is in blue, things that it developed are in green, nodes that are missing are in red, imported are in yellow, no stress expansion are in grey. Also invert the tree so it builds from down to up. I have also noticed markers and flags clip through the bodies, fix that too." Presentation only; no rule changes.
+
+- **Needs tree states:** the old tree only knew "has", "missing", "no-stress expansion" and a catch-all "other"; most boxes (often 12–13 of 19) fell into "other", and owned boxes were painted in the bloc colour (a red bloc looked like "missing"). Now each box is one of: **specialty** (blue ◆), **developed** (green ✓), **imported** (yellow ⇩, dashed border), **missing** (red ✗, thick red border), **no-stress expansion** (grey +, dotted border), or **other (locked)** (outline only — its prerequisites are not there yet). A red "!" marks an owned node that is under-covered (causes strain); ★ still marks the Requires node. Legend included.
+- **Upward tree:** basics (Resources, Infrastructure) are at the bottom and the tree builds upward.
+- **No clipping:** pins, pin flags and trade flags no longer cut into the Moon or Mars at the edge. Markers behind the body are hidden, ones at the horizon fade, and regional trade arcs follow the surface (no shortcut through the body for far-apart colonies). Switching Moon / Mars / Moon+Mars re-frames a zoomed globe so it is not cropped in the side-by-side view.

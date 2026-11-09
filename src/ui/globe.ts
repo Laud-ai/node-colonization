@@ -6,6 +6,7 @@
  * Loaded lazily (dynamic import) so three.js + textures only load when playing.
  */
 import { svgDataUrl } from "./svgUrl.js";
+import { limbVisibility } from "./limb.js";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { clampLevel, drawHudIcon, worldPlaneSize } from "./hudIcon.js";
@@ -58,7 +59,12 @@ interface Pin {
   alert?: THREE.Sprite;
   /** Screen-space anchor used for route-label declutter. */
   head?: THREE.Object3D;
+  /** 0.15.3 billboards drawn without depth test; hidden/faded by an explicit globe-occlusion test. */
+  sprites?: THREE.Sprite[];
+  /** Point whose visibility decides the sprites (pin tip / lifted glyph site). */
+  anchor?: THREE.Vector3;
 }
+
 /** 0.15.2 flag sizes (sizeAttenuation=false units): the colony's own flag is clearly larger than trade-partner flags. */
 const PIN_FLAG_W = 0.046;
 const ROUTE_FLAG_W = 0.026;
@@ -205,8 +211,9 @@ export class GlobeView {
       const k = ok ? "pinFlagsLoaded" : "pinFlagsFailed";
       this.el.dataset[k] = String(Number(this.el.dataset[k] || 0) + 1);
     });
-    const mat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, transparent: true });
+    const mat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, depthTest: false, transparent: true });
     const fl = new THREE.Sprite(mat);
+    (pin.sprites ??= []).push(fl);
     fl.position.copy(at);
     fl.scale.set(w, (w * 2) / 3, 1);
     fl.center.set(centre[0], centre[1]);
@@ -246,12 +253,15 @@ export class GlobeView {
         const va = latLonToVector3(r.a.lat, r.a.lon, 1).normalize();
         const vb = latLonToVector3(r.b.lat, r.b.lon, 1).normalize();
         const ang = va.angleTo(vb);
-        const lift = 0.025 + 0.12 * (ang / Math.PI);
+        const lift = 0.03 + 0.14 * (ang / Math.PI);
         const pts: THREE.Vector3[] = [];
         for (let i = 0; i <= 32; i++) {
           const t = i / 32;
-          const v = new THREE.Vector3().copy(va).lerp(vb, t);
-          if (v.lengthSq() < 1e-6) v.set(0, 1, 0);
+          // 0.15.3 great-circle slerp (lerp+normalize collapsed through the body for near-antipodal pairs)
+          const sa = Math.sin(ang) || 1;
+          const v = ang < 1e-4 ? va.clone()
+            : va.clone().multiplyScalar(Math.sin((1 - t) * ang) / sa).add(vb.clone().multiplyScalar(Math.sin(t * ang) / sa));
+          if (v.lengthSq() < 1e-6) v.copy(va);
           v.normalize().multiplyScalar(RADIUS + DECAL_OFFSET + lift * Math.sin(Math.PI * t));
           pts.push(v);
         }
@@ -283,7 +293,7 @@ export class GlobeView {
           this.el.dataset.routeFlagMinInk = String(minInk === Infinity ? 0 : minInk);
         });
         if (r.flagSvg) flagTotal++;
-        const smat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, transparent: true });
+        const smat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, depthTest: false, transparent: true });
         const sprite = new THREE.Sprite(smat);
         sprite.position.copy(end.clone().add(dir.clone().multiplyScalar(0.03)));
         sprite.scale.set(ROUTE_FLAG_W * 1.17, ROUTE_FLAG_W * 0.83, 1);
@@ -374,9 +384,9 @@ export class GlobeView {
     mesh.scale.set(s, s, 1);
     const root = new THREE.Group();
     root.add(mesh);
-    const pin: Pin = { m, root, pickables: [mesh], key: "", textures: [tex], materials: [mat], geos: [], head: mesh };
-    // 0.15.2 own flag beside the glyph (to the right)
-    this.pinFlag(pin, m, pos, PIN_FLAG_W * 0.8 * (sel ? 1.15 : 1), [-0.35, 0.5]);
+    const pin: Pin = { m, root, pickables: [mesh], key: "", textures: [tex], materials: [mat], geos: [], head: mesh, sprites: [], anchor: pos.clone().multiplyScalar(1.01) };
+    // 0.15.2 own flag beside the glyph (to the right); anchored just above the surface
+    this.pinFlag(pin, m, pos.clone().multiplyScalar(1.01), PIN_FLAG_W * 0.8 * (sel ? 1.15 : 1), [-0.35, 0.5]);
     return pin;
   }
 
@@ -407,30 +417,44 @@ export class GlobeView {
       level: m.level, color: m.color, independent: m.independent, fervor: m.fervor,
       specialty: m.specialty, selected: sel, war: m.war, fresh: m.fresh,
     }));
-    const headMat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, transparent: true });
+    const headMat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, depthTest: false, transparent: true });
     const head = new THREE.Sprite(headMat);
     head.position.copy(tip);
     const sc = PIN_SCALE * (sel ? 1.2 : 1);
     head.scale.set(sc, sc, 1);
     head.renderOrder = 4;
     root.add(shadow, stem, foot, head);
-    const pin: Pin = { m, root, pickables: [head], key: "", textures: [tex], materials: [stemMat, shadowMat, footMat, headMat], geos: [stemGeo, sleeveGeo, footGeo], head };
+    const pin: Pin = { m, root, pickables: [head], key: "", textures: [tex], materials: [stemMat, shadowMat, footMat, headMat], geos: [stemGeo, sleeveGeo, footGeo], head, sprites: [head], anchor: tip.clone() };
     // 0.15.2 own flag: a pennant flying right from the stem just below the fervor ring (badge is top-right,
     // swords bottom-left, so the lower-right is free). Top-left corner sits 0.40·head below / 0.06·head right of the tip.
     const fw = PIN_FLAG_W * (sel ? 1.2 : 1), fh = (fw * 2) / 3;
     this.pinFlag(pin, m, tip, fw, [-(sc * 0.06) / fw, 1 + (sc * 0.4) / fh]);
     if (m.alert) {
       const atex = this.canvasTex(PIN_HEAD_PX, (ctx) => drawAlertRing(ctx, PIN_HEAD_PX));
-      const amat = new THREE.SpriteMaterial({ map: atex, sizeAttenuation: false, depthWrite: false, transparent: true });
+      const amat = new THREE.SpriteMaterial({ map: atex, sizeAttenuation: false, depthWrite: false, depthTest: false, transparent: true });
       const ring = new THREE.Sprite(amat);
       ring.position.copy(tip);
       ring.scale.set(sc * 0.78, sc * 0.78, 1);
       ring.renderOrder = 3;
       root.add(ring);
       pin.alert = ring;
+      pin.sprites!.push(ring);
       pin.textures.push(atex); pin.materials.push(amat);
     }
     return pin;
+  }
+
+  /**
+   * 0.15.3 framing: switching Moon / Mars / Moon+Mars changes the panel shape; a zoom made in the
+   * single view would crop the globe in the narrow side-by-side panel. Restore the default distance
+   * (keeping the viewing direction) so the whole body fits.
+   */
+  refit(): void {
+    const d = this.body === "Moon" ? 2.885 : 2.91;
+    if (this.camera.position.length() < d) {
+      this.camera.position.setLength(d);
+      this.controls.update();
+    }
   }
 
   /** Turn the camera toward a marker, keeping distance. Returns false if not on this body. */
@@ -495,9 +519,23 @@ export class GlobeView {
     }
     this.controls.update();
     const t = performance.now() / 1000;
+    // 0.15.3 occlusion: sprites skip the depth test, so hide/fade them by an explicit ray test against the body.
+    this.group.updateMatrixWorld();
+    const cam = this.camera.position;
+    const w0 = new THREE.Vector3();
+    let hidden = 0;
     for (const p of this.pins.values()) {
-      if (p.alert) (p.alert.material as THREE.SpriteMaterial).opacity = 0.25 + 0.75 * Math.abs(Math.sin(t * 2.6));
+      if (!p.sprites || !p.anchor) continue;
+      w0.copy(p.anchor).applyMatrix4(this.group.matrixWorld);
+      const vis = limbVisibility(cam, w0, RADIUS);
+      if (vis === 0) hidden++;
+      for (const s of p.sprites) {
+        s.visible = vis > 0;
+        const a = s === p.alert ? 0.25 + 0.75 * Math.abs(Math.sin(t * 2.6)) : 1;
+        (s.material as THREE.SpriteMaterial).opacity = a * vis;
+      }
     }
+    this.el.dataset.hiddenMarkers = String(hidden);
     this.declutterRoutes(h);
     this.renderer.render(this.scene, this.camera);
   }
@@ -508,7 +546,7 @@ export class GlobeView {
     const k = h / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)); // px per sprite unit
     const v = new THREE.Vector3();
     const toPx = (o: THREE.Object3D) => { o.getWorldPosition(v).project(this.camera); return { x: v.x * h, y: v.y * h, z: v.z }; };
-    const heads = [...this.pins.values()].map((p) => p.head ? toPx(p.head) : null).filter((x): x is { x: number; y: number; z: number } => !!x);
+    const heads = [...this.pins.values()].map((p) => p.head && (p.sprites?.[0]?.visible ?? true) ? toPx(p.head) : null).filter((x): x is { x: number; y: number; z: number } => !!x);
     const headR = PIN_SCALE * 0.42 * k + PIN_FLAG_W * k; // ring + own flag
     const labR = ROUTE_FLAG_W * 0.6 * k;
     const placed: { x: number; y: number }[] = [];
@@ -516,8 +554,10 @@ export class GlobeView {
       const p = toPx(s);
       const hitPin = heads.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < headR + labR);
       const hitLab = placed.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < labR * 1.6);
-      (s.material as THREE.SpriteMaterial).opacity = hitPin ? 0.18 : hitLab ? 0.45 : 1;
-      if (!hitPin) placed.push(p);
+      const lv = limbVisibility(this.camera.position, s.getWorldPosition(new THREE.Vector3()), RADIUS);
+      s.visible = lv > 0;
+      (s.material as THREE.SpriteMaterial).opacity = (hitPin ? 0.18 : hitLab ? 0.45 : 1) * lv;
+      if (!hitPin && lv > 0) placed.push(p);
     }
   }
 

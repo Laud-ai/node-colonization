@@ -1,6 +1,13 @@
 {
-  "live": "0.15.2",
+  "live": "0.15.3",
   "versions": [
+    {
+      "version": "0.15.3",
+      "summary": "Needs tree colours, upward tree, no clipping through the bodies",
+      "available": true,
+      "date": "2026-11-09",
+      "path": "versions/0.15.3/index.html"
+    },
     {
       "version": "0.15.2",
       "summary": "Route flag fix; colonies fly their own flag",

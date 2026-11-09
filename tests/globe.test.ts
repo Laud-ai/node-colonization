@@ -57,3 +57,14 @@ test("0.15.2 svgDataUrl never duplicates xmlns (Firefox rejected the route-label
   assert.equal(count(svgDataUrl('<svg width="3" height="2"></svg>')), 1);
   assert.equal(count(svgDataUrl('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>')), 1);
 });
+
+test("0.15.3 limb occlusion: far-side anchors hidden, near side visible, horizon fades", async () => {
+  const { limbVisibility } = await import("../src/ui/limb.js");
+  const cam = { x: 0, y: 0, z: 3 };
+  assert.equal(limbVisibility(cam, { x: 0, y: 0, z: 1.05 }), 1, "facing the camera");
+  assert.equal(limbVisibility(cam, { x: 0, y: 0, z: -1.05 }), 0, "directly behind");
+  assert.equal(limbVisibility(cam, { x: 0.6, y: 0, z: -0.85 }), 0, "back hemisphere");
+  const edge = limbVisibility(cam, { x: 1.0, y: 0, z: 0.36 });
+  assert.ok(edge > 0 && edge < 1, `near the limb fades (${edge})`);
+  assert.ok(limbVisibility(cam, { x: 1.3, y: 0, z: -0.2 }) > 0, "tall pin peeking over the limb stays visible");
+});

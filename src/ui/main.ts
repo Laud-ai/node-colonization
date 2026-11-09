@@ -383,6 +383,7 @@ document.querySelector(".globe-modes")?.addEventListener("click", (e) => {
   if (!btn?.dataset.globeMode) return;
   document.querySelectorAll(".globe-modes [data-globe-mode]").forEach((b) => b.classList.toggle("selected", b === btn));
   $("globeWrap").className = `globe-wrap mode-${btn.dataset.globeMode}`;
+  globes?.Moon.refit(); globes?.Mars.refit();
 });
 
 // --- 0.14.0 Needs tree + suppliers ---

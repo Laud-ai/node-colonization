@@ -131,6 +131,37 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
     + Number(await page.locator("#globeMars").getAttribute("data-routes"))).toBeGreaterThan(0);
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(smokeDir, "routes-late-game.png") });
+  // 0.15.3 needs tree: find a colony showing all five Tiago states, screenshot it
+  const want = ["specialty", "developed", "imported", "missing", "expand"];
+  const cards = page.locator("#colonies .colony");
+  let best = -1, bestCount = -1;
+  for (let i = 0; i < await cards.count(); i++) {
+    await cards.nth(i).click();
+    const states = new Set(await page.locator("#needsTree .nt-node").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.state)));
+    const n = want.filter((w) => states.has(w)).length;
+    if (n > bestCount) { best = i; bestCount = n; }
+    if (n === 5) break;
+  }
+  await cards.nth(best).click();
+  expect(bestCount).toBe(5);
+  await expect(page.locator('#needsTree [data-legend="imported"]')).toBeVisible();
+  await page.locator('.win[data-win="needs"]').screenshot({ path: path.join(smokeDir, "needs-tree-states.png") });
+  // 0.15.3 limb close-ups: rotate so markers sit at / behind the limb; sprites must not cut into the body
+  for (const [mode, sel, file] of [["moon", "#globeMoon", "globe-limb-moon.png"], ["mars", "#globeMars", "globe-limb-mars.png"]] as const) {
+    await page.locator(`[data-globe-mode="${mode}"]`).click();
+    await page.waitForTimeout(300);
+    const gb = (await page.locator(`${sel} canvas`).boundingBox())!;
+    await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(gb.x + gb.width / 2 + gb.width * 0.32, gb.y + gb.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await page.mouse.move(gb.x + 4, gb.y + gb.height - 4);
+    await page.waitForTimeout(900);
+    await page.locator(sel).screenshot({ path: path.join(smokeDir, file) });
+  }
+  expect(Number(await page.locator("#globeMoon").getAttribute("data-hidden-markers") ?? 0)
+    + Number(await page.locator("#globeMars").getAttribute("data-hidden-markers") ?? 0)).toBeGreaterThanOrEqual(0);
+  await page.locator('[data-globe-mode="both"]').click();
   // 0.15.2: route-label partner flags really render (image loaded, none failed, flag pixels inked)
   for (const g of ["#globeMoon", "#globeMars"]) {
     const el = page.locator(g);

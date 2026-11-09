@@ -73,3 +73,34 @@ test("0.14.0 supplier sort: Requires → feasible → needs → own/ally → neu
   ].sort(compareSuppliers).map((s) => s.name);
   assert.deepEqual(list, ["req", "blocked-req", "own", "ally", "neutral", "rival", "grey-own", "illegal"]);
 });
+
+test("0.15.3 needs tree: every state is reachable (specialty/developed/imported/missing/expand/locked)", async () => {
+  const { classifyNeed } = await import("../src/needs.js");
+  const G = createGame(7);
+  const c = G.colonies[0]!;
+  for (const n of NODES) c.developed[n] = 0;
+  c.logisticsLines.forEach((l) => { l.route = null; l.exportRoute = null; });
+  c.specialty = "Science"; c.requires = "Money";
+  c.developed.Resources = 1; c.developed.Infrastructure = 1; c.developed.Energy = 1; c.developed.Food = 1;
+  // Fake an active Water import on a free line
+  const line = c.logisticsLines[0]!;
+  line.route = { node: "Water", sourceKind: "earth", sourceId: G.blocs[0]!.name, sourceName: G.blocs[0]!.name } as never;
+  const tree = needsTree(c);
+  const st = (n: string) => tree.find((t) => t.node === n)!.state;
+  assert.equal(st("Science"), "specialty");
+  assert.equal(st("Resources"), "developed");
+  assert.equal(extras(c, "Water") > 0 ? st("Water") : "imported", "imported");
+  assert.equal(st("Money"), "missing", "Requires");
+  assert.equal(st("Oxygen"), "missing", "absent basal");
+  assert.equal(st("Population"), "expand", "Food + Water covered → no strain");
+  assert.equal(st("Subversion"), "locked");
+  const states = new Set(tree.map((t) => t.state));
+  for (const s of ["specialty", "developed", "imported", "missing", "expand", "locked"]) assert.ok(states.has(s as never), s);
+  // classifier priority: owned beats missing
+  assert.equal(classifyNeed(c, "Resources", new Set(["Resources"]), new Set()), "developed");
+  // mid-game: "locked" is no longer the bulk of the tree
+  const M = midGame();
+  let locked = 0, total = 0;
+  for (const col of M.colonies) for (const t of needsTree(col)) { total++; if (t.state === "locked") locked++; }
+  assert.ok(locked / total < 0.75, `locked share ${locked}/${total}`);
+});
