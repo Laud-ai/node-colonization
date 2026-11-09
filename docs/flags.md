@@ -1,4 +1,4 @@
-# Flag grammar (0.15.0)
+# Flag grammar (0.15.0, revised 0.15.1)
 
 Code: `src/flagDesign.ts` (pure, deterministic, no DOM) → `flagDesignToSvg(design, w, h)`.
 Game wiring: `src/flagLineage.ts` (`flagForColony(G, c)`, `flagForEarth(bloc)`), used by colony cards, supplier cards, route labels on the globes and the solar map strip. Gallery: `?flags` or Rules tab → **Flag gallery**. Tests: `tests/flagDesign.test.ts`.
@@ -9,11 +9,14 @@ Flags are **original designs inspired by real traditions**, not copies of real n
 
 1. **Keep it simple** — one field layout + at most 2 charges (ideology/lineage emblem in the canton, specialty in the fly). Recognizable at 24×16 (map strip is 15×10).
 2. **Meaningful symbolism** — layout = nationality, charge = function (specialty), colours/emblem = ideology, tincture shade = body.
-3. **2–3 basic colours** from the standard tincture set; a **4th only with a named tradition** (`justification`; today only the African Union base flag's Pan-African black star).
+3. **2–3 basic colours** from the standard tincture set; a **4th only with a named tradition** (`justification`; today only the African Union base flag's Pan-African black stars).
 4. **No lettering or seals.**
 5. **Distinctive or related** — daughters reuse their bloc's palette + layout family (related) but are differenced by a hash of seed + colony id (siblings differ). Daughters of different blocs never collide (tested).
 
-**Rule of tincture / contrast:** charges are metal-on-colour or colour-on-metal **and** WCAG contrast ≥ 3; adjacent fields must differ and have contrast ≥ 1.4. Every palette is forced to hold at least one metal and one colour. If no layout/permutation passes, the fallback is a plain colour field with a metal charge.
+6. **Stars and stripes / ensign:** the canton carries the emblem; at most **one** extra charge outside it.
+7. **Multinational blocs never copy one country's flag:** the alliance carries a union mark (EAPA sun disc inside a blue bordure — not Japan; AU, Latin Federation and South Asian Commonwealth use a ring of stars — not Ghana/Ethiopia, Colombia/Ecuador or India's chakra; the Commonwealth ensign adds a star in the fly — not a bare Blue Ensign).
+
+**Rule of tincture / contrast:** charges are metal-on-colour or colour-on-metal **and** WCAG contrast ≥ 3; adjacent fields must differ and have contrast ≥ 1.4. **Forbidden pairs** (vanish even though the class rule passes): or ↔ saffron — never as a charge on a field nor as adjacent fields. Every palette is forced to hold at least one metal and one colour. If no layout/permutation passes, the fallback is a plain colour field with a metal charge.
 
 ## Tinctures
 
@@ -31,7 +34,11 @@ Flags are **original designs inspired by real traditions**, not copies of real n
 | purpure | #5B2C83 | colour |
 | saffron | #FF9933 | colour |
 
-The designer's muted UI palette is **not** used for flags: real tradition colours win (flags get a 1px #2A3A4D keyline to sit on the dark UI).
+The designer's muted UI palette is **not** used for flags: real tradition colours win. Every flag gets a 1px **#5A6B7D** keyline (0.15.1, lighter so black/navy flags separate from the dark UI).
+
+## Small mode (≤30px wide)
+
+`flagDesignToSvg(d, w, h)` switches automatically when `w ≤ 30` (route labels 30×20, map strip 15–18px, colony-card icons 21×14; supplier cards at 48×32 stay full): 5 stripes instead of 13, union as a plain cross + saltire (no fimbriation), the star ring becomes 6 dots, and the specialty charge is dropped (layout + ideology/lineage emblem stay). Force with `{ small: true|false }`.
 
 ## Traditions (nationality)
 
@@ -43,16 +50,16 @@ The designer's muted UI palette is **not** used for flags: real tradition colour
 | Corporate China | Corporate minimal bars on socialist red/gold | sable / gules / or | corporateBars + star | corporateBars, bicolorV |
 | European Union | Blue field with ring of gold stars; Nordic-cross and tricolour daughters (European) | azure / or / argent | plain + starRing | nordic, tricolorV, plain |
 | Russian Federation | Pan-Slavic white-blue-red tricolour | argent / azure / gules | tricolorH | tricolorH, tricolorV, ensign |
-| Latin Federation | Pan-Iberian / Gran Colombia yellow-blue-red | or / azure / gules | tricolorH | tricolorH, tricolorV, hoistTriangle |
-| African Union | Pan-African green-gold-red with black star (Ghana tradition) | vert / or / gules (+sable) | tricolorH + star | tricolorH, tricolorV, hoistTriangle |
+| Latin Federation | Pan-Iberian / Gran Colombia yellow-blue-red; ring of stars marks the federation (not Colombia/Ecuador) | or / azure / gules | tricolorH + starRing | tricolorH, tricolorV, hoistTriangle |
+| African Union | Pan-African green-gold-red; ring of black stars marks the union (not Ghana/Ethiopia) | vert / or / gules (+sable) | tricolorH + starRing | tricolorH, tricolorV, hoistTriangle |
 | New Caliphate | Islamic green with white crescent and star; Pan-Arab black-white-green | vert / argent / sable | plain + crescentStar | bicolorV, tricolorH, plain |
-| South Asian Commonwealth | Saffron-white-green tricolour with wheel (South Asian) | saffron / argent / vert | tricolorH + orbitRing | tricolorH, tricolorV, bicolorV |
-| East Asian Pacific Alliance | Centre-disc (East Asian sun disc) | argent / gules / azure | disc | disc, bicolorH, bend |
+| South Asian Commonwealth | Saffron-white-green tricolour with a ring of stars (South Asian union; not India's chakra) | saffron / argent / vert | tricolorH + starRing | tricolorH, tricolorV, bicolorV |
+| East Asian Pacific Alliance | East Asian sun disc inside a blue Pacific bordure (alliance mark; not Japan) | argent / gules / azure | discBordure | disc, bicolorH, bend |
 | Dominion of Indochina | Red-blue-red with white disc (Indochinese) | gules / azure / argent | tricolorH + orbitRing | tricolorH, disc, bicolorH |
-| British Commonwealth | Ensign with union canton (Commonwealth / Blue Ensign lineage) | azure / argent / gules | ensign + union | ensign, ensign, nordic |
+| British Commonwealth | Ensign with union canton (Commonwealth / Blue Ensign lineage) | azure / argent / gules | ensign + union + star (fly) | ensign, ensign, nordic |
 | United Nations | UN light blue with white emblem (internationalist) | celeste / argent | plain + orbitRing | plain, bicolorH, ensign |
 
-Layouts: plain, tricolorV, tricolorH, bicolorH, bicolorV, nordic (cross), ensign (canton), starsStripes, hoistTriangle, chevron, bend, disc, corporateBars. 300×200 (3:2) viewBox.
+Layouts: plain, tricolorV, tricolorH, bicolorH, bicolorV, nordic (cross), ensign (canton), starsStripes (13 stripes), hoistTriangle, chevron, bend, disc, discBordure, corporateBars. 300×200 (3:2) viewBox.
 
 ## Ideology families
 
@@ -71,7 +78,7 @@ Keyword match on the colony's first ideology (hybrids like `A-B` take the first 
 | pioneer | pioneer | purpure / or | — |
 | liberal (default) | everything else | azure / argent | — |
 
-With no ideology charge, a daughter repeats its bloc emblem (US star, EU star ring, UN orbit ring, Indochina/South Asia wheel ring); British daughters usually fly the union in the canton (Blue Ensign lineage).
+With no ideology charge, a daughter repeats its bloc emblem (US star, EU/AU/Latin/South Asian star ring, UN and Indochina orbit ring); British daughters usually fly the union in the canton (Blue Ensign lineage).
 
 ## Function (specialty charge)
 

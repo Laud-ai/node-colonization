@@ -38,3 +38,13 @@ test("0.13.1 pin helpers: tiers, fervor colors, halo for dark colors", async () 
   assert.equal(haloFor("#e8e4d8"), "#0b1020");
   assert.equal(SPECIALTY_CODE.Water, "H₂O");
 });
+
+test("0.15.1 fervor non-colour cue: 1/2/3 lit segments + dashed ring when critical", async () => {
+  const { fervorCue } = await import("../src/ui/pinIcon.js");
+  assert.deepEqual(fervorCue(0), { segments: 0, critical: false });
+  assert.deepEqual(fervorCue(0.2), { segments: 1, critical: false });
+  assert.deepEqual(fervorCue(0.6), { segments: 2, critical: false });
+  assert.deepEqual(fervorCue(0.85), { segments: 3, critical: false });
+  assert.deepEqual(fervorCue(0.95), { segments: 3, critical: true });
+  assert.deepEqual(fervorCue(2), { segments: 3, critical: true });
+});

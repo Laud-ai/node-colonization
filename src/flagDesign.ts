@@ -37,13 +37,24 @@ export function contrast(a: Tincture, b: Tincture): number {
 export const MIN_CHARGE_CONTRAST = 3;
 /** Adjacent field divisions must not be light-on-light or dark-on-dark (ratio ≥ 1.4). */
 export const MIN_FIELD_CONTRAST = 1.4;
-export function chargeOk(fg: Tincture, bg: Tincture): boolean {
-  return TINCTURES[fg].metal !== TINCTURES[bg].metal && contrast(fg, bg) >= MIN_CHARGE_CONTRAST;
+/** Pairs that vibrate / vanish even when the class rule passes (0.15.1: or-on-saffron). */
+export const FORBIDDEN_PAIRS: [Tincture, Tincture][] = [["or", "saffron"]];
+export function forbiddenPair(a: Tincture, b: Tincture): boolean {
+  return FORBIDDEN_PAIRS.some(([x, y]) => (a === x && b === y) || (a === y && b === x));
 }
+export function chargeOk(fg: Tincture, bg: Tincture): boolean {
+  return TINCTURES[fg].metal !== TINCTURES[bg].metal && contrast(fg, bg) >= MIN_CHARGE_CONTRAST && !forbiddenPair(fg, bg);
+}
+/** Adjacent fields: different, enough contrast, not a forbidden pair. */
+export function fieldsOk(a: Tincture, b: Tincture): boolean {
+  return a !== b && contrast(a, b) >= MIN_FIELD_CONTRAST && !forbiddenPair(a, b);
+}
+/** Layouts whose canton already carries the emblem: at most one extra charge outside it. */
+export const ONE_EXTRA_LAYOUTS: Layout[] = ["starsStripes", "ensign"];
 
 // ---------- Earth traditions (derived from the game's 14 blocs) ----------
 export type Layout = "plain" | "tricolorV" | "tricolorH" | "bicolorH" | "bicolorV" | "nordic" | "ensign"
-  | "starsStripes" | "hoistTriangle" | "chevron" | "disc" | "corporateBars" | "bend";
+  | "starsStripes" | "hoistTriangle" | "chevron" | "disc" | "discBordure" | "corporateBars" | "bend";
 export type ChargeKind = NodeType | "star" | "crescentStar" | "starRing" | "orbitRing" | "union";
 
 export interface Tradition {
@@ -54,6 +65,8 @@ export interface Tradition {
   baseCharge?: ChargeKind;
   /** Layout family daughters may use (colonial/derived designs). */
   daughters: Layout[];
+  /** Optional second base charge in the fly (e.g. the Commonwealth star on the ensign). */
+  baseFly?: ChargeKind;
   /** Justified 4th tincture on the base flag only. */
   extra?: { tincture: Tincture; why: string };
 }
@@ -65,13 +78,13 @@ export const TRADITIONS: Record<string, Tradition> = {
   "Corporate China": { tradition: "Corporate minimal bars on socialist red/gold", palette: ["sable", "gules", "or"], base: "corporateBars", baseCharge: "star", daughters: ["corporateBars", "bicolorV"] },
   "European Union": { tradition: "Blue field with ring of gold stars; Nordic-cross and tricolour daughters (European)", palette: ["azure", "or", "argent"], base: "plain", baseCharge: "starRing", daughters: ["nordic", "tricolorV", "plain"] },
   "Russian Federation": { tradition: "Pan-Slavic white-blue-red tricolour", palette: ["argent", "azure", "gules"], base: "tricolorH", daughters: ["tricolorH", "tricolorV", "ensign"] },
-  "Latin Federation": { tradition: "Pan-Iberian / Gran Colombia yellow-blue-red", palette: ["or", "azure", "gules"], base: "tricolorH", daughters: ["tricolorH", "tricolorV", "hoistTriangle"] },
-  "African Union": { tradition: "Pan-African green-gold-red with black star (Ghana tradition)", palette: ["vert", "or", "gules"], base: "tricolorH", baseCharge: "star", daughters: ["tricolorH", "tricolorV", "hoistTriangle"], extra: { tincture: "sable", why: "Pan-African black star (Ghana tradition)" } },
+  "Latin Federation": { tradition: "Pan-Iberian / Gran Colombia yellow-blue-red; ring of stars marks the federation (not Colombia/Ecuador)", palette: ["or", "azure", "gules"], base: "tricolorH", baseCharge: "starRing", daughters: ["tricolorH", "tricolorV", "hoistTriangle"] },
+  "African Union": { tradition: "Pan-African green-gold-red; ring of black stars marks the union (not Ghana/Ethiopia)", palette: ["vert", "or", "gules"], base: "tricolorH", baseCharge: "starRing", daughters: ["tricolorH", "tricolorV", "hoistTriangle"], extra: { tincture: "sable", why: "Pan-African black stars (Ghana / Black Star tradition)" } },
   "New Caliphate": { tradition: "Islamic green with white crescent and star; Pan-Arab black-white-green", palette: ["vert", "argent", "sable"], base: "plain", baseCharge: "crescentStar", daughters: ["bicolorV", "tricolorH", "plain"] },
-  "South Asian Commonwealth": { tradition: "Saffron-white-green tricolour with wheel (South Asian)", palette: ["saffron", "argent", "vert"], base: "tricolorH", baseCharge: "orbitRing", daughters: ["tricolorH", "tricolorV", "bicolorV"] },
-  "East Asian Pacific Alliance": { tradition: "Centre-disc (East Asian sun disc)", palette: ["argent", "gules", "azure"], base: "disc", daughters: ["disc", "bicolorH", "bend"] },
+  "South Asian Commonwealth": { tradition: "Saffron-white-green tricolour with a ring of stars (South Asian union; not India's chakra)", palette: ["saffron", "argent", "vert"], base: "tricolorH", baseCharge: "starRing", daughters: ["tricolorH", "tricolorV", "bicolorV"] },
+  "East Asian Pacific Alliance": { tradition: "East Asian sun disc inside a blue Pacific bordure (alliance mark; not Japan)", palette: ["argent", "gules", "azure"], base: "discBordure", daughters: ["disc", "bicolorH", "bend"] },
   "Dominion of Indochina": { tradition: "Red-blue-red with white disc (Indochinese)", palette: ["gules", "azure", "argent"], base: "tricolorH", baseCharge: "orbitRing", daughters: ["tricolorH", "disc", "bicolorH"] },
-  "British Commonwealth": { tradition: "Ensign with union canton (Commonwealth / Blue Ensign lineage)", palette: ["azure", "argent", "gules"], base: "ensign", baseCharge: "union", daughters: ["ensign", "ensign", "nordic"] },
+  "British Commonwealth": { tradition: "Ensign with union canton (Commonwealth / Blue Ensign lineage)", palette: ["azure", "argent", "gules"], base: "ensign", baseCharge: "union", baseFly: "star", daughters: ["ensign", "ensign", "nordic"] },
   "United Nations": { tradition: "UN light blue with white emblem (internationalist)", palette: ["celeste", "argent"], base: "plain", baseCharge: "orbitRing", daughters: ["plain", "bicolorH", "ensign"] },
 };
 const FALLBACK: Tradition = { tradition: "Generic", palette: ["sable", "argent", "or"], base: "bicolorH", daughters: ["bicolorH", "tricolorV", "bend"] };
@@ -142,7 +155,7 @@ export function fhash(...parts: (string | number)[]): number {
 
 // ---------- Layout geometry (viewBox 300×200, 3:2) ----------
 interface Geo { regions: string[]; adj: [number, number][]; slots: Record<string, { x: number; y: number; r: number; region: number }>; needs: number }
-function geo(layout: Layout): Geo {
+function geo(layout: Layout, small = false): Geo {
   switch (layout) {
     case "plain": return { needs: 1, regions: ["M0 0H300V200H0Z"], adj: [], slots: { canton: { x: 62, y: 52, r: 34, region: 0 }, centre: { x: 150, y: 100, r: 52, region: 0 }, fly: { x: 225, y: 100, r: 36, region: 0 } } };
     case "tricolorV": return { needs: 3, regions: ["M0 0H100V200H0Z", "M100 0H200V200H100Z", "M200 0H300V200H200Z"], adj: [[0, 1], [1, 2]], slots: { centre: { x: 150, y: 100, r: 40, region: 1 }, canton: { x: 50, y: 52, r: 30, region: 0 }, fly: { x: 250, y: 100, r: 30, region: 2 } } };
@@ -152,14 +165,18 @@ function geo(layout: Layout): Geo {
     case "nordic": return { needs: 2, regions: ["M0 0H300V200H0Z", "M84 0H120V82H300V118H120V200H84V118H0V82H84Z"], adj: [[0, 1]], slots: { canton: { x: 42, y: 41, r: 26, region: 0 }, fly: { x: 215, y: 160, r: 26, region: 0 }, centre: { x: 215, y: 41, r: 26, region: 0 } } };
     case "ensign": return { needs: 2, regions: ["M0 0H300V200H0Z", "M0 0H150V100H0Z"], adj: [[0, 1]], slots: { canton: { x: 75, y: 50, r: 34, region: 1 }, fly: { x: 225, y: 120, r: 42, region: 0 }, centre: { x: 225, y: 120, r: 42, region: 0 } } };
     case "starsStripes": {
-      const r: string[] = ["M0 0H300V200H0Z"];
-      for (let i = 1; i < 7; i += 2) r.push(`M0 ${(i * 200) / 7}H300V${((i + 1) * 200) / 7}H0Z`);
-      r.push("M0 0H130V114H0Z");
-      return { needs: 3, regions: r, adj: [[0, 1], [6 > 4 ? 4 : 4, 0]], slots: { canton: { x: 65, y: 57, r: 36, region: 4 }, fly: { x: 230, y: 150, r: 0, region: 0 }, centre: { x: 65, y: 57, r: 36, region: 4 } } };
+      // 13 stripes (7 coloured, starting at the top); small mode 5 (3 coloured). Canton spans 7/13 resp. 3/5.
+      const n = small ? 5 : 13, sh = 200 / n;
+      let stripes = "";
+      for (let i = 0; i < n; i += 2) stripes += `M0 ${(i * sh).toFixed(2)}H300V${((i + 1) * sh).toFixed(2)}H0Z`;
+      const ch = (small ? 3 : 7) * sh;
+      const r: string[] = ["M0 0H300V200H0Z", stripes, `M0 0H130V${ch.toFixed(2)}H0Z`];
+      return { needs: 3, regions: r, adj: [[0, 1], [2, 0], [2, 1]], slots: { canton: { x: 65, y: 54, r: 34, region: 2 }, fly: { x: 230, y: 150, r: 0, region: 0 }, centre: { x: 65, y: 54, r: 34, region: 2 } } };
     }
     case "hoistTriangle": return { needs: 3, regions: ["M0 0H300V100H0Z", "M0 100H300V200H0Z", "M0 0L130 100L0 200Z"], adj: [[0, 1], [0, 2], [1, 2]], slots: { canton: { x: 42, y: 100, r: 30, region: 2 }, centre: { x: 42, y: 100, r: 30, region: 2 }, fly: { x: 225, y: 50, r: 30, region: 0 } } };
     case "chevron": return { needs: 3, regions: ["M0 0H300V200H0Z", "M0 0L170 100L0 200Z", "M0 0L120 100L0 200Z"], adj: [[0, 1], [1, 2]], slots: { canton: { x: 38, y: 100, r: 28, region: 2 }, centre: { x: 38, y: 100, r: 28, region: 2 }, fly: { x: 240, y: 100, r: 34, region: 0 } } };
     case "disc": return { needs: 2, regions: ["M0 0H300V200H0Z", "M150 40A60 60 0 1 1 149.9 40Z"], adj: [[0, 1]], slots: { centre: { x: 150, y: 100, r: 40, region: 1 }, canton: { x: 150, y: 100, r: 40, region: 1 }, fly: { x: 255, y: 165, r: 22, region: 0 } } };
+    case "discBordure": return { needs: 3, regions: ["M0 0H300V200H0Z", "M0 0H300V200H0ZM22 22V178H278V22Z", "M150 46A54 54 0 1 1 149.9 46Z"], adj: [[0, 1], [0, 2]], slots: { centre: { x: 150, y: 100, r: 36, region: 2 }, canton: { x: 150, y: 100, r: 36, region: 2 }, fly: { x: 248, y: 158, r: 14, region: 0 } } };
     case "corporateBars": return { needs: 3, regions: ["M0 0H300V200H0Z", "M0 150H300V164H0Z", "M0 174H300V182H0Z", "M24 24H72V72H24Z"], adj: [[0, 1], [0, 2], [0, 3]], slots: { canton: { x: 48, y: 48, r: 18, region: 3 }, centre: { x: 190, y: 80, r: 40, region: 0 }, fly: { x: 190, y: 80, r: 40, region: 0 } } };
     case "bend": return { needs: 3, regions: ["M0 0H300L0 200Z", "M300 0V200H0Z", "M0 170L255 0H300V30L45 200H0Z"], adj: [[0, 2], [1, 2]], slots: { canton: { x: 55, y: 50, r: 30, region: 0 }, centre: { x: 55, y: 50, r: 30, region: 0 }, fly: { x: 245, y: 150, r: 30, region: 1 } } };
   }
@@ -171,7 +188,8 @@ function regionFill(layout: Layout, n: number): number[] {
     case "tricolorV": case "tricolorH": return n >= 3 ? [0, 1, 2] : [0, 1, 0];
     case "bicolorH": case "bicolorV": case "nordic": case "disc": return [0, 1];
     case "ensign": return [0, 1];
-    case "starsStripes": return [1, 0, 0, 0, 2].map((x) => Math.min(x, n - 1)); // field argent, stripes gules, canton azure
+    case "starsStripes": return [1, 0, 2].map((x) => Math.min(x, n - 1)); // field argent, stripes gules, canton azure
+    case "discBordure": return [0, Math.min(2, n - 1), 1]; // field, bordure, disc
     case "hoistTriangle": return [0, 1, Math.min(2, n - 1)];
     case "chevron": return [0, 1, Math.min(2, n - 1)];
     case "corporateBars": return [0, 1, Math.min(2, n - 1), Math.min(2, n - 1)];
@@ -226,14 +244,19 @@ function assemble(layout: Layout, palette: Tincture[], order: number[], charges:
   const pal = order.map((i) => palette[i % palette.length]!);
   const fills = regionFill(layout, pal.length).map((i) => pal[i]!);
   const adjacent: [Tincture, Tincture][] = g.adj.map(([a, b]) => [fills[a]!, fills[b]!]);
-  if (adjacent.some(([a, b]) => a === b || contrast(a, b) < MIN_FIELD_CONTRAST)) return null;
+  if (adjacent.some(([a, b]) => !fieldsOk(a, b))) return null;
   const used = new Set<string>();
   const out: FlagDesign["charges"] = [];
+  let extras = 0;
   for (const c of charges) {
     let slotName = c.slot;
     if (used.has(slotName)) slotName = ["centre", "fly", "canton"].find((s) => !used.has(s) && g.slots[s]!.r > 0) ?? slotName;
     const slot = g.slots[slotName]!;
     if (!slot || slot.r <= 0) continue;
+    if (ONE_EXTRA_LAYOUTS.includes(layout) && slotName !== "canton") {
+      if (extras >= 1) continue;
+      extras++;
+    }
     used.add(slotName);
     const bg = fills[slot.region]!;
     const t = c.tincture && chargeOk(c.tincture, bg) ? c.tincture : chargeTincture(pal, bg, c.prefer);
@@ -268,7 +291,8 @@ function searchDesign(layouts: Layout[], palette: Tincture[], h: number, charges
 /** Earth bloc base flag (fixed per tradition). */
 export function blocFlag(bloc: string): FlagDesign {
   const t = traditionOf(bloc);
-  const charges = t.baseCharge ? [{ kind: t.baseCharge, slot: t.base === "starsStripes" || t.base === "ensign" ? "canton" : t.base === "plain" && t.baseCharge === "star" ? "canton" : "centre", tincture: t.extra?.tincture }] : [];
+  const charges: { kind: ChargeKind; slot: string; tincture?: Tincture }[] = t.baseCharge ? [{ kind: t.baseCharge, slot: t.base === "starsStripes" || t.base === "ensign" ? "canton" : t.base === "plain" && t.baseCharge === "star" ? "canton" : "centre", tincture: t.extra?.tincture }] : [];
+  if (t.baseFly) charges.push({ kind: t.baseFly, slot: "fly" });
   let d = assemble(t.base, t.palette, [0, 1, 2], charges);
   if (!d) d = searchDesign([t.base], t.palette, 0, charges);
   d.era = "earth";
@@ -279,7 +303,7 @@ export function blocFlag(bloc: string): FlagDesign {
 
 const CHARGE_SLOT_PREF: Record<Layout, string> = {
   plain: "centre", tricolorV: "centre", tricolorH: "centre", bicolorH: "canton", bicolorV: "canton", nordic: "canton",
-  ensign: "fly", starsStripes: "canton", hoistTriangle: "canton", chevron: "canton", disc: "centre", corporateBars: "centre", bend: "canton",
+  ensign: "fly", starsStripes: "canton", hoistTriangle: "canton", chevron: "canton", disc: "centre", discBordure: "centre", corporateBars: "centre", bend: "canton",
 };
 
 function ideologyCharge(f: IdeologyFamily): ChargeKind | null {
@@ -366,6 +390,12 @@ export function colonyFlag(inp: FlagInput): FlagDesign {
   return d;
 }
 
+// Small-mode variants (read at 24×16)
+const SMALL_SHAPES: Record<string, (fill: string, bg: string) => string> = {
+  union: (f, bg) => `<path d="M-2.2 -1.5L2.2 1.5M2.2 -1.5L-2.2 1.5" stroke="${f}" stroke-width="0.6"/><path d="M0 -1.5V1.5M-2.2 0H2.2" stroke="${bg === "#C8102E" ? "#0033A0" : "#C8102E"}" stroke-width="0.6"/>`,
+  starRing: (f) => Array.from({ length: 6 }, (_, i) => { const a = (i / 6) * Math.PI * 2 - Math.PI / 2; return `<circle cx="${(Math.cos(a) * 0.72).toFixed(3)}" cy="${(Math.sin(a) * 0.72).toFixed(3)}" r="0.2" fill="${f}"/>`; }).join(""),
+};
+
 // ---------- Charges (unit shapes, centred at 0,0, radius 1) ----------
 function starPath(r = 1, inner = 0.382, cx = 0, cy = 0): string {
   let d = "";
@@ -403,16 +433,29 @@ const SHAPES: Record<string, (fill: string, bg: string) => string> = {
   Projects: (f, bg) => `<path d="M-0.85 -0.85H0.85V0.85H-0.85Z" fill="${f}"/><path d="M-0.45 -0.45H0.45V0.45H-0.45Z" fill="${bg}"/><path d="M-0.2 -0.2H0.2V0.2H-0.2Z" fill="${f}"/>`,
 };
 
-export function flagDesignToSvg(d: FlagDesign, w = 30, h = 20, title?: string): string {
-  const g = geo(d.layout);
+/** Flag keyline (0.15.1: lighter so dark flags separate from the #0B0F14 UI). */
+export const FLAG_KEYLINE = "#5A6B7D";
+/** Widths at or below this render in small mode. */
+export const SMALL_FLAG_MAX_W = 30;
+const isSpecialty = (k: ChargeKind) => !["star", "crescentStar", "starRing", "orbitRing", "union"].includes(k);
+
+/**
+ * Render a design. Small mode (auto when w ≤ 30, e.g. route labels, map strip, card icons):
+ * 5 stripes instead of 13, union without fimbriation, star ring → 6 dots, no specialty charge
+ * (layout + ideology/lineage emblem stay).
+ */
+export function flagDesignToSvg(d: FlagDesign, w = 30, h = 20, title?: string, opts?: { small?: boolean }): string {
+  const small = opts?.small ?? w <= SMALL_FLAG_MAX_W;
+  const g = geo(d.layout, small);
   const fills = d.fields.map((i) => TINCTURES[d.palette[i]!].hex);
   let body = g.regions.map((p, i) => `<path d="${p}" fill="${fills[i]}"/>`).join("");
   for (const c of d.charges) {
-    const fn = SHAPES[c.kind] ?? SHAPES.star!;
+    if (small && isSpecialty(c.kind)) continue;
+    const fn = (small && SMALL_SHAPES[c.kind]) || (SHAPES[c.kind] ?? SHAPES.star!);
     // union canton fills its slot box instead of a round charge
     const scale = c.r;
     body += `<g transform="translate(${c.x} ${c.y}) scale(${scale.toFixed(2)})">${fn(TINCTURES[c.tincture].hex, TINCTURES[c.bg].hex)}</g>`;
   }
   const t = title ? `<title>${title.replace(/</g, "&lt;")}</title>` : "";
-  return `<svg class="flag" xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 300 200" aria-hidden="true">${t}${body}<rect width="300" height="200" fill="none" stroke="#2A3A4D" stroke-width="${(300 / w).toFixed(1)}"/></svg>`;
+  return `<svg class="flag" xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 300 200" aria-hidden="true">${t}${body}<rect width="300" height="200" fill="none" stroke="${FLAG_KEYLINE}" stroke-width="${(300 / w).toFixed(1)}"/></svg>`;
 }

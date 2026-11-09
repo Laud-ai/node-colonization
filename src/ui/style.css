@@ -839,3 +839,5 @@ th {
 .fg-pair { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .fg-pair .fg-tile { width: 180px; }
 .fg-arrow { color: #F2A541; font-size: 22px; }
+.fg-smallgrid { display: inline-grid; grid-template-columns: repeat(16, 24px); gap: 8px; padding: 12px; background: #111822; border: 1px solid #2A3A4D; }
+.fg-smallgrid svg { display: block; }

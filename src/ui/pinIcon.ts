@@ -50,6 +50,17 @@ export function fervorColor(f: number): string {
   return "#22c55e";
 }
 
+/**
+ * 0.15.1 non-colour fervor cue (colourblind-safe): lit segments of a 3-segment ring
+ * (1 = <50%, 2 = 50–80%, 3 = ≥80% of the threshold) + a dashed outer ring when critical (≥90%).
+ */
+export const FERVOR_CRITICAL = 0.9;
+export function fervorCue(f: number): { segments: 0 | 1 | 2 | 3; critical: boolean } {
+  const x = Math.max(0, Math.min(1, f));
+  const segments = x <= 0 ? 0 : x < 0.5 ? 1 : x < 0.8 ? 2 : 3;
+  return { segments, critical: x >= FERVOR_CRITICAL };
+}
+
 export function drawPinHead(ctx: CanvasRenderingContext2D, size: number, p: PinStyle): void {
   const c = size / 2;
   const R = size * 0.27; // head radius
@@ -58,17 +69,25 @@ export function drawPinHead(ctx: CanvasRenderingContext2D, size: number, p: PinS
   const fill = p.independent ? "#ffffff" : p.color;
   const outline = p.independent ? "#000000" : haloFor(p.color);
 
-  // Fervor ring track + fill (clockwise from 12 o'clock)
+  // Fervor ring: 3 segments clockwise from 12 o'clock; lit count + colour (0.15.1 non-colour cue)
   const ringR = R + size * 0.075;
   if (p.fervor !== null) {
-    ctx.lineWidth = size * 0.055;
-    ctx.strokeStyle = "rgba(10,14,24,0.75)";
-    ctx.beginPath(); ctx.arc(c, c, ringR, 0, Math.PI * 2); ctx.stroke();
     const f = Math.max(0, Math.min(1, p.fervor));
-    if (f > 0) {
-      ctx.strokeStyle = fervorColor(f);
-      ctx.lineCap = "round";
-      ctx.beginPath(); ctx.arc(c, c, ringR, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); ctx.stroke();
+    const cue = fervorCue(f);
+    const gap = 0.32, seg = (Math.PI * 2) / 3;
+    ctx.lineWidth = size * 0.055;
+    ctx.lineCap = "butt";
+    for (let i = 0; i < 3; i++) {
+      const a0 = -Math.PI / 2 + i * seg + gap / 2, a1 = a0 + seg - gap;
+      ctx.strokeStyle = i < cue.segments ? fervorColor(f) : "rgba(10,14,24,0.75)";
+      ctx.beginPath(); ctx.arc(c, c, ringR, a0, a1); ctx.stroke();
+    }
+    if (cue.critical) {
+      ctx.lineWidth = size * 0.022;
+      ctx.strokeStyle = "#ffffff";
+      ctx.setLineDash([size * 0.045, size * 0.035]);
+      ctx.beginPath(); ctx.arc(c, c, ringR + size * 0.058, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
     }
   }
 

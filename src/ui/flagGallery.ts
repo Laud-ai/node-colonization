@@ -6,12 +6,15 @@ import { IDEOLOGIES } from "../engine.js";
 const SPECS: NodeType[] = ["Water", "Production", "Food", "Logistics", "Military", "Terraforming", "Energy", "Science", "Oxygen", "Thrust", "Resources", "Culture", "Money", "Projects"];
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
+let smalls: { d: FlagDesign; label: string }[] = [];
 function tile(d: FlagDesign, label: string, sub = ""): string {
+  smalls.push({ d, label });
   return `<figure class="fg-tile"><div class="fg-flag">${flagDesignToSvg(d, 120, 80)}</div><div class="fg-small">${flagDesignToSvg(d, 24, 16)}</div>
     <figcaption><b>${esc(label)}</b><span>${esc(sub || `${d.layout} · ${d.tinctures.join("/")}${d.justification ? " (4th: " + d.justification + ")" : ""}`)}</span></figcaption></figure>`;
 }
 
 export function flagGalleryHtml(seed = 2026): string {
+  smalls = [];
   const blocs = Object.keys(TRADITIONS);
   const earth = blocs.map((b) => tile(blocFlag(b), b, TRADITIONS[b]!.tradition)).join("");
   let n = 0;
@@ -41,13 +44,15 @@ export function flagGalleryHtml(seed = 2026): string {
     const f = colonyFlag({ ...b, patron: np!, ideology: defaultIdeology(np!) });
     return `<div class="fg-pair">${tile(colonyFlag(b), `${o} colony`, "Science · Mars")}<span class="fg-arrow">→</span>${tile(f, `flipped to ${np}`, `heritage ${f.heritage?.kind}: ${f.heritage?.value}`)}</div>`;
   }).join("");
-  return `<div class="fg"><h2>Flag gallery (0.15.0 grammar)</h2>
+  return `<div class="fg"><h2>Flag gallery (0.15.1 grammar)</h2>
     <p class="tags">Synthetic samples, seed ${seed}. Large = 120×80, small = 24×16 (recognizable when small). Rules: ≤3 tinctures (4th only with a named tradition), metal-on-colour charges, contrast checked. See docs/flags.md.</p>
     <h3>Earth blocs (tradition base flags)</h3><div class="fg-grid">${earth}</div>
     <h3>Colonial daughters (inherit palette + layout family; specialty charge; differenced per colony)</h3><div class="fg-grid">${daughters}</div>
     <h3>Ideology on the same lineage</h3><div class="fg-grid">${ideos}</div>
     <h3>Independence: before → after (keeps one heritage colour) → a member of the same nation</h3>${pairs}
-    <h3>Bloc flip (keeps heritage layout or colour)</h3>${flip}</div>`;
+    <h3>Bloc flip (keeps heritage layout or colour)</h3>${flip}
+    <h3>Small mode at real size 24×16 (route labels, map strip, card icons): 5 stripes, plain union, 6-dot ring, no specialty charge</h3>
+    <div id="fgSmall" class="fg-smallgrid">${smalls.map((x) => `<div title="${esc(x.label)}">${flagDesignToSvg(x.d, 24, 16)}</div>`).join("")}</div></div>`;
 }
 
 function defaultIdeology(b: string): string { return IDEOLOGIES[b] ?? "Market Realism"; }

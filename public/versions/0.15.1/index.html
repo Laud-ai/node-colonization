@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Node Colonization — 0.15.1</title>
+    <script type="module" crossorigin src="./assets/index-Nn1c5hcS.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BZjfOSlZ.css">
+  </head>
+  <body>
+    <!-- Pre-sim setup / lobby (0.9.3) -->
+    <div id="setupScreen" class="setup-screen">
+      <div class="setup-card">
+        <div class="setup-brand">
+          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.15.1</span></h1>
+          <p class="setup-blurb">
+            Pre-simulation lobby for <b>fervor</b> and <b>solar-bloc / diplomacy</b> experiments.
+            Pick presets on each tab, confirm the threshold, then begin. Defaults:
+            <b>realistic_survival</b> + <b>solar_realist</b>.
+          </p>
+        </div>
+
+        <div class="setup-tabs" role="tablist" aria-label="Setup categories">
+          <button type="button" class="setup-tab selected" data-setup-tab="fervor" role="tab" aria-selected="true">Fervor</button>
+          <button type="button" class="setup-tab" data-setup-tab="solar" role="tab" aria-selected="false">Solar / Blocs</button>
+          <button type="button" class="setup-tab" data-setup-tab="versions" role="tab" aria-selected="false">Version / Ruleset</button>
+          <button type="button" class="setup-tab" data-setup-tab="rules" role="tab" aria-selected="false">Rules</button>
+        </div>
+
+        <div id="setupTabFervor" class="setup-tab-panel" data-panel="fervor">
+          <div class="setup-section">
+            <h2>Fervor variant</h2>
+            <div id="fervorVariantButtons" class="variant-grid" role="group" aria-label="Fervor variants"></div>
+          </div>
+          <div class="setup-section setup-summary-panel">
+            <h2>Selected fervor</h2>
+            <div id="fervorVariantTitle" class="setup-variant-title">—</div>
+            <p id="fervorVariantSummary" class="setup-variant-summary">—</p>
+            <p id="fervorVariantKnobs" class="setup-variant-knobs tags">—</p>
+          </div>
+        </div>
+
+        <div id="setupTabSolar" class="setup-tab-panel" data-panel="solar" hidden>
+          <div class="setup-section">
+            <h2>Solar / diplomacy variant</h2>
+            <div id="solarVariantButtons" class="variant-grid" role="group" aria-label="Solar bloc variants"></div>
+          </div>
+          <div class="setup-section setup-summary-panel">
+            <h2>Selected solar / blocs</h2>
+            <div id="solarVariantTitle" class="setup-variant-title">—</div>
+            <p id="solarVariantSummary" class="setup-variant-summary">—</p>
+            <p id="solarVariantKnobs" class="setup-variant-knobs tags">—</p>
+          </div>
+        </div>
+
+        <div id="setupTabRules" class="setup-tab-panel" data-panel="rules" hidden>
+          <div class="setup-section">
+            <p class="setup-blurb">Rule flags for the live build. <button type="button" id="rulesDefault">Shipped defaults</button> <button type="button" id="rulesLegacy">Legacy (pre-0.9.4)</button> <button type="button" id="flagGalleryBtn">Flag gallery</button></p>
+            <div id="rulesForm" class="rules-form"></div>
+            <p class="tags credits">Credits — Moon globe texture: NASA Scientific Visualization Studio CGI Moon Kit (svs.gsfc.nasa.gov/4720), LRO LROC WAC color mosaic (NASA/GSFC/Arizona State Univ.), public domain. Mars globe texture: Viking MDIM 2.1 colorized global mosaic (NASA/JPL/USGS Astrogeology, via Wikimedia Commons), public domain.</p>
+          </div>
+        </div>
+
+        <div id="setupTabVersions" class="setup-tab-panel" data-panel="versions" hidden>
+          <div class="setup-section">
+            <p class="setup-blurb">Play any point in development. The live build (with these tabs) is the current version; older snapshots open frozen with their own rules.</p>
+            <div id="versionList" class="variant-grid">Loading…</div>
+          </div>
+        </div>
+
+        <div class="setup-controls">
+          <label class="inline" title="Seed for the new game (blank = random)">
+            Seed
+            <input id="setupSeed" type="text" placeholder="random" />
+          </label>
+          <label class="inline" title="Independence fervor threshold (set by preset; override before start)">
+            Indep. threshold
+            <input id="setupThreshold" type="number" min="1" max="99" value="10" />
+          </label>
+          <button class="good" id="btnBeginSim">Begin simulation</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="playScreen" class="play-screen map-first" hidden>
+      <header class="topbar">
+        <div class="brand">
+          <h1>NODE COLONIZATION <span class="badge">0.15.1 / FLAGS</span></h1>
+          <div class="meta">Turn <b id="turn">1</b> · Acting: <b id="acting">—</b> · Phase: <b id="phase">Colony</b></div>
+        </div>
+        <div class="toolbar">
+          <button class="primary" id="btnAuto">Auto-resolve</button>
+          <button class="good" id="btnEnd">End turn</button>
+          <button id="btnFound" disabled>Found</button>
+          <span id="foundTaxHint" class="hint" hidden></span>
+          <label class="inline">Simulate <input id="simN" type="number" min="1" max="200" value="10" /></label>
+          <button class="primary" id="btnSim">Simulate N</button>
+          <div class="win-menu-wrap">
+            <button type="button" id="btnWindows" aria-haspopup="true">Windows ▾</button>
+            <div id="windowMenu" class="window-menu" hidden></div>
+          </div>
+          <button class="danger" id="btnNew">New game…</button>
+        </div>
+      </header>
+      <div class="workspace">
+        <aside id="dockLeft" class="dock dock-left" aria-label="Left windows"></aside>
+        <div class="map-stage">
+          <div id="announcements" class="announcements" hidden></div>
+      <div id="globeCard" class="card globe-card">
+        <div class="globe-bar">
+          <h2>Solar view</h2>
+          <div class="globe-modes" role="group" aria-label="Globe view">
+            <button type="button" data-globe-mode="both" class="selected">Moon + Mars</button>
+            <button type="button" data-globe-mode="moon">Moon</button>
+            <button type="button" data-globe-mode="mars">Mars</button>
+          </div>
+          <div class="globe-modes marker-styles" role="group" aria-label="Marker style">
+            <button type="button" data-marker-style="pin" class="selected">Pins</button>
+            <button type="button" data-marker-style="glyph">Glyphs</button>
+          </div>
+          <div class="globe-modes"><button type="button" id="btnRoutes" class="selected" aria-pressed="true" title="Show trade routes: arcs = regional (same body), lines into space = outer (Earth↔Moon, Moon↔Mars) with the partner's flag">Routes</button></div>
+          <span class="sub">Drag to rotate · wheel to zoom · hover / click a marker</span>
+        </div>
+        <details class="pin-legend tags"><summary>Legend</summary>Pin: head = bloc color (white = Independent) · number = level · stem short L1–4 / medium L5–9 / tall L10+ · ring = fervor toward independence (1 / 2 / 3 lit segments, green → amber → red; dashed outer ring = critical) · badge = specialty · pulsing red = strain or survival clock · ⚔ = invasion / proxy war · dashed = founded this turn<br/>Routes: arc across the surface = regional trade (arrow = direction, two arrows = two-way) · line into space = outer trade with Earth / Moon / Mars; the label shows the partner's flag, name and resource.</details>
+        <div id="globeWrap" class="globe-wrap mode-both">
+          <div id="globeMoon" class="globe-slot"></div>
+          <div id="globeMars" class="globe-slot"></div>
+        </div>
+        <div id="globeStatus" class="tags"></div>
+        <div class="globe-credit tags">Moon: NASA SVS CGI Moon Kit (LRO LROC WAC mosaic, NASA/GSFC/ASU) · Mars: Viking MDIM 2.1 colorized global mosaic (NASA/JPL/USGS) · both public domain</div>
+      </div>
+        </div>
+        <aside id="dockRight" class="dock dock-right" aria-label="Right windows"></aside>
+      </div>
+      <div id="tray" class="tray" aria-label="Minimized windows"></div>
+      <div id="winStore" hidden>
+      <section class="win" data-win="needs" data-side="left" data-title="Needs tree">
+        <div class="win-bar"><span class="win-title">Needs tree</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div id="needsTree" class="needs-tree">Select a colony.</div>
+        </div>
+      </section>
+      <section class="win" data-win="suppliers" data-side="left" data-title="Suppliers">
+        <div class="win-bar"><span class="win-title">Suppliers</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div id="suppliers" class="suppliers">Click a node in the needs tree.</div>
+        </div>
+      </section>
+      <section class="win" data-win="moves" data-side="left" data-title="Legal moves">
+        <div class="win-bar"><span class="win-title">Legal moves</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div class="tags" id="movesActing"></div>
+          <div id="logistics" class="logistics-panel"></div>
+          <div id="moves" class="moves"></div>
+          <p class="hint">Open logistics lines carry <b>1 import + 1 export</b>. Reach: Earth lines = Earth↔Moon; Moon = hub; Mars = Moon↔Mars (no Earth). East↔West Earth trade only if vital+fair. Importing <b>Logistics</b> adds a line. End turn auto-passes, founding, alliance pressure, cleanup.</p>
+        </div>
+      </section>
+      <section class="win" data-win="blocs" data-side="left" data-title="Earth blocs">
+        <div class="win-bar"><span class="win-title">Earth blocs</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div id="leadingNation" class="tags" style="margin-bottom:8px" hidden></div>
+          <div id="blocs"></div>
+        </div>
+      </section>
+      <section class="win" data-win="independents" data-side="left" data-title="Solar independents">
+        <div class="win-bar"><span class="win-title">Solar independents</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div id="independents"></div>
+        </div>
+      </section>
+      <section class="win" data-win="game" data-side="left" data-title="Game settings">
+        <div class="win-bar"><span class="win-title">Game settings</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <label class="inline">Seed <input id="seedInput" type="text" placeholder="random" /></label>
+          <label class="inline" title="Fervor sum for independence revolt">Indep. threshold <input id="indepThreshold" type="number" min="1" max="99" value="10" /></label>
+          <div class="tags">Fervor <b id="fervorVariantLive">—</b> · Solar <b id="solarVariantLive">—</b> · Seed <b id="seed">—</b></div>
+          <div class="tags" style="margin-top:6px">Layout: <button type="button" id="layoutReset">Reset windows</button></div>
+        </div>
+      </section>
+      <section class="win" data-win="selected" data-side="right" data-title="Selected colony">
+        <div class="win-bar"><span class="win-title">Selected colony</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div id="detail">Select a colony.</div>
+        </div>
+      </section>
+      <section class="win" data-win="colonies" data-side="right" data-title="Colonies">
+        <div class="win-bar"><span class="win-title">Colonies</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div class="tags">Highest RP acts first · click to select</div>
+          <div id="colonies"></div>
+        </div>
+      </section>
+      <section class="win" data-win="log" data-side="right" data-title="Event log">
+        <div class="win-bar"><span class="win-title">Event log</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div id="log"></div>
+        </div>
+      </section>
+      <section class="win" data-win="map" data-side="right" data-title="Solar map strip">
+        <div class="win-bar"><span class="win-title">Solar map strip</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body">
+          <div id="solarMapCard" class="solar-map-card" hidden><div id="solarMap"></div></div>
+        </div>
+      </section>
+      </div>
+    </div>
+
+    <div id="snapshotOverlay" hidden style="position:fixed;inset:0;z-index:9999;background:#000">
+    <div style="padding:6px 10px;background:#111;color:#ddd;display:flex;gap:12px;align-items:center">
+      <button type="button" id="snapshotBack">← Back to live lobby</button><span id="snapshotLabel"></span>
+    </div>
+    <iframe id="snapshotFrame" style="flex:1;border:0;width:100%" title="Version snapshot"></iframe>
+  </div>
+  <div id="flagGallery" class="fg-overlay" hidden><button type="button" id="flagGalleryClose" class="fg-close">Close ✕</button><div id="flagGalleryBody"></div></div>
+</body>
+</html>

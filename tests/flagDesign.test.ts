@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  TRADITIONS, TINCTURES, blocFlag, colonyFlag, flagDesignToSvg, chargeOk, contrast, MIN_FIELD_CONTRAST,
+  TRADITIONS, TINCTURES, blocFlag, colonyFlag, flagDesignToSvg, chargeOk, contrast, MIN_FIELD_CONTRAST, fieldsOk, forbiddenPair, FLAG_KEYLINE, ONE_EXTRA_LAYOUTS,
   ideologyFamily, type FlagInput,
 } from "../src/flagDesign.js";
 import { NODES } from "../src/nodes.js";
@@ -36,7 +36,7 @@ test("0.15.0 flags are deterministic (same input → same SVG)", () => {
 test("0.15.0 rule of tincture + contrast: every charge and adjacent field passes", () => {
   for (const { d, label } of all()) {
     for (const c of d.charges) assert.ok(chargeOk(c.tincture, c.bg), `${label}: ${c.kind} ${c.tincture} on ${c.bg}`);
-    for (const [a, b] of d.adjacent) assert.ok(a !== b && contrast(a, b) >= MIN_FIELD_CONTRAST, `${label}: ${a}|${b}`);
+    for (const [a, b] of d.adjacent) assert.ok(fieldsOk(a, b) && contrast(a, b) >= MIN_FIELD_CONTRAST, `${label}: ${a}|${b}`);
   }
 });
 
@@ -58,7 +58,7 @@ test("0.15.0 lineage, function, ideology and independence semantics", () => {
   assert.ok(colonyFlag({ ...base, ideology: "Chinese Socialism" }).charges.some((c) => c.kind === "star"), "socialist star");
   assert.ok(colonyFlag({ ...base, origin: "New Caliphate", patron: "New Caliphate", ideology: "Political Islam" }).charges.some((c) => c.kind === "crescentStar"));
   // Siblings (same origin, different ids) are mostly distinct
-  const sibs = new Set(Array.from({ length: 12 }, (_, i) => flagDesignToSvg(colonyFlag({ ...base, id: `c${i}`, specialty: NODES[i % 4]! }))));
+  const sibs = new Set(Array.from({ length: 12 }, (_, i) => flagDesignToSvg(colonyFlag({ ...base, id: `c${i}`, specialty: NODES[i % 4]! }), 120, 80)));
   assert.ok(sibs.size >= 10);
   // Independence: revolutionary redesign that keeps a heritage colour from the founding bloc
   const ind = colonyFlag({ ...base, patron: "Independent", liege: { id: "c7", origin: "Russian Federation", ideology: "Putinism" }, isLiege: true });
@@ -81,7 +81,53 @@ test("0.15.0 lineage, function, ideology and independence semantics", () => {
 
 test("0.15.0 distinctive: daughters of different blocs don't collide", () => {
   for (const sp of NODES.slice(0, 6)) for (const body of ["Moon", "Mars"] as const) {
-    const svgs = BLOCS.map((b) => flagDesignToSvg(colonyFlag({ seed: 9, id: "c3", origin: b, patron: b, ideology: IDEOLOGIES[b] ?? "", specialty: sp, body })));
+    const svgs = BLOCS.map((b) => flagDesignToSvg(colonyFlag({ seed: 9, id: "c3", origin: b, patron: b, ideology: IDEOLOGIES[b] ?? "", specialty: sp, body }), 120, 80));
     assert.equal(new Set(svgs).size, BLOCS.length, `${sp}/${body}`);
   }
+});
+
+test("0.15.1 or-on-saffron is forbidden and never generated", () => {
+  assert.equal(chargeOk("or", "saffron"), false);
+  assert.equal(chargeOk("saffron", "or"), false);
+  assert.equal(fieldsOk("or", "saffron"), false);
+  for (const { d, label } of all()) {
+    for (const c of d.charges) assert.ok(!forbiddenPair(c.tincture, c.bg), `${label}: ${c.tincture} on ${c.bg}`);
+    for (const [a, b] of d.adjacent) assert.ok(!forbiddenPair(a, b), `${label}: ${a}|${b}`);
+  }
+});
+
+test("0.15.1 stars-and-stripes / ensign carry at most one charge outside the canton", () => {
+  for (const { d, label } of all()) {
+    if (!ONE_EXTRA_LAYOUTS.includes(d.layout)) continue;
+    const cantonY = d.layout === "ensign" ? 50 : 54;
+    const outside = d.charges.filter((c) => !(c.y === cantonY && c.x <= 75));
+    assert.ok(outside.length <= 1, `${label}: ${d.charges.map((c) => c.kind).join(",")}`);
+  }
+});
+
+test("0.15.1 small mode (≤30px): 5 stripes, plain union, 6-dot ring, no specialty; lighter keyline", () => {
+  const us = blocFlag("United States");
+  const stripes = (svg: string) => (svg.match(/<path d="([^"]+)"/g)![1]!.match(/M0 /g) ?? []).length;
+  assert.equal(stripes(flagDesignToSvg(us, 120, 80)), 7); // 13 stripes → 7 coloured
+  assert.equal(stripes(flagDesignToSvg(us, 24, 16)), 3); // 5 stripes → 3 coloured
+  const eu = flagDesignToSvg(blocFlag("European Union"), 24, 16);
+  assert.equal((eu.match(/<circle /g) ?? []).length, 6);
+  const uk = blocFlag("British Commonwealth");
+  assert.ok(flagDesignToSvg(uk, 120, 80).split('stroke-width="0.35"').length === 2, "full union is fimbriated");
+  assert.ok(!flagDesignToSvg(uk, 30, 20).includes('stroke-width="0.35"'), "small union has no fimbriation");
+  const col = colonyFlag({ seed: 1, id: "c1", origin: "Russian Federation", patron: "Russian Federation", ideology: "Socialism", specialty: "Water", body: "Moon" });
+  assert.ok(col.charges.some((c) => c.kind === "Water"));
+  const big = flagDesignToSvg(col, 120, 80), small = flagDesignToSvg(col, 24, 16);
+  assert.ok(small.length < big.length, "specialty dropped in small mode");
+  assert.ok(small.includes(FLAG_KEYLINE) && big.includes(FLAG_KEYLINE));
+});
+
+test("0.15.1 multinational blocs don't copy a single country's flag", () => {
+  const eapa = blocFlag("East Asian Pacific Alliance");
+  assert.equal(eapa.layout, "discBordure"); // not Japan's plain disc
+  assert.equal(eapa.tinctures.length, 3);
+  assert.ok(blocFlag("African Union").charges.some((c) => c.kind === "starRing")); // not Ghana/Ethiopia
+  assert.ok(blocFlag("South Asian Commonwealth").charges.every((c) => c.kind !== "orbitRing")); // not India's chakra
+  assert.ok(blocFlag("Latin Federation").charges.length > 0); // not plain Colombia/Ecuador bands
+  assert.equal(blocFlag("British Commonwealth").charges.length, 2); // union + Commonwealth star, not a bare Blue Ensign
 });

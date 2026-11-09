@@ -1,6 +1,6 @@
 # AGENTS.md — Node Colonization
 
-Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.15.0** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags).
+Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.15.1** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags).
 
 **Live (GitHub Pages):** https://laud-ai.github.io/node-colonization/  
 **Repo:** https://github.com/Laud-ai/node-colonization
@@ -49,7 +49,7 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 | `src/ui/windows.ts` | Side-window manager: dock left/right, minimize to tray, close/reopen via Windows menu, layout in localStorage `nc.layout.v1` |
 | `src/ui/needsView.ts` | Needs tree SVG + supplier cards HTML |
 | `src/ui/globe.ts` | 0.13.0 Solar view (0.14.1: `setRoutes` draws regional arcs + outer lines with flag labels from `UiSnapshot.routes`): three.js Moon/Mars globes (lazy `import()`), HUD markers, hover/click select. Reads the UI snapshot only, never sim state |
-| `src/ui/pinIcon.ts` | 0.13.1 pin heads (bloc color, level number, fervor ring, specialty badge, alerts), stem tiers, halo helper |
+| `src/ui/pinIcon.ts` | 0.13.1 pin heads (bloc color, level number, fervor ring, specialty badge, alerts), stem tiers, halo helper. 0.15.1: fervor ring is 3 segments (1/2/3 lit) + dashed outer ring when critical (`fervorCue`) — a non-colour cue |
 | `src/ui/hudIcon.ts` | Level glyphs from the Sep 1 Moon Globe (L1 dot, L2–4 3-wedge, L5–9 6-wedge, L10+ rings) |
 | `src/ui/colonySites.ts` | Pure deterministic colony lat/lon (hash of seed + id, ≥10° spacing, stable across turns) |
 | `src/ui/textures/` | `moon.jpg` (NASA SVS CGI Moon Kit, LROC WAC), `mars.jpg` (Viking MDIM 2.1 colorized, NASA/JPL/USGS); imported via `?url` so they bundle into live + snapshot builds |
@@ -72,7 +72,7 @@ npm run build
 npm run smoke
 ```
 
-`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → pins default + glyph toggle → needs tree → supplier menu → minimize/restore a window → routes layer + toggle → 60 more turns (late game) → flags on cards + map strip → version iframes 0.9.0 and 0.12.0 → `?flags` gallery). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`, `pins-closeup.png`, `glyphs-closeup.png`, `needs-tree.png`, `suppliers.png`, `map-first.png`, `routes-late-game.png`, `flags-gallery.png`.
+`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → pins default + glyph toggle → needs tree → supplier menu → minimize/restore a window → routes layer + toggle → 60 more turns (late game) → flags on cards + map strip → version iframes 0.9.0 and 0.12.0 → `?flags` gallery). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`, `pins-closeup.png`, `glyphs-closeup.png`, `needs-tree.png`, `suppliers.png`, `map-first.png`, `routes-late-game.png`, `flags-gallery.png`, `flags-small.png` (real 24×16 small-mode flags at 3× DPR).
 
 ## Release steps
 
@@ -90,4 +90,6 @@ Remote: `Laud-ai/node-colonization` (public). Default branch **main**. Tags mark
 
 ## Flags (0.15.0)
 
-Every flag in the UI comes from `src/flagDesign.ts` via `flagDesignToSvg` — never hand-draw or hardcode a flag. Rules (tested): deterministic; ≤3 tinctures (4th only with a named `justification`); charges metal/colour with contrast ≥3; adjacent fields contrast ≥1.4; daughters of different blocs never collide. Real tradition colours beat the muted UI palette. See `docs/flags.md`.
+Every flag in the UI comes from `src/flagDesign.ts` via `flagDesignToSvg` — never hand-draw or hardcode a flag. Rules (tested): deterministic; ≤3 tinctures (4th only with a named `justification`); charges metal/colour with contrast ≥3; adjacent fields contrast ≥1.4; daughters of different blocs never collide; or↔saffron forbidden; stars-and-stripes/ensign get at most one charge outside the canton; multinational blocs must not copy a single country's flag. Small mode is automatic at ≤30px wide (5 stripes, plain union, 6-dot ring, no specialty). Keyline #5A6B7D. Real tradition colours beat the muted UI palette. See `docs/flags.md`.
+
+Designer review (0.15.1): Tiago's choices stand; new list rows live in `out/reports/visual-overhaul-assets.md` §12 — list only, no reskin (fervor non-colour cue is the one implemented item).

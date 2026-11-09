@@ -173,6 +173,14 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: Math.min(4000, fgH) });
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(smokeDir, "flags-gallery.png") });
+  // 0.15.1 small-mode close-up (real 24×16 flags, captured at 3× device pixels)
+  const smallBox = await page.locator("#fgSmall").boundingBox();
+  const zoomPage = await page.context().browser()!.newPage({ deviceScaleFactor: 3, viewport: { width: 1400, height: Math.min(4000, fgH) } });
+  await zoomPage.goto(page.url());
+  await expect(zoomPage.locator("#fgSmall")).toBeVisible();
+  await zoomPage.locator("#fgSmall").screenshot({ path: path.join(smokeDir, "flags-small.png") });
+  await zoomPage.close();
+  expect(smallBox).not.toBeNull();
 
   expect(pageErrors, `page errors: ${pageErrors.join(" | ")}`).toEqual([]);
   expect(consoleErrors, `console errors: ${consoleErrors.join(" | ")}`).toEqual([]);

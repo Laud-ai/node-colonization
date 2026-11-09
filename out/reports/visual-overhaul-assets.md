@@ -143,15 +143,32 @@ This is a list only: the UI reskin is **not** applied yet. Flags are being redes
 |---|---|---|---|---|---|
 | UI clicks, end turn, alert ping, revolution sting, ambient hum | Short, quiet SFX with a mute toggle | Public-domain/CC0 libraries or generated | P3 | code (CC0) | ~6 |
 
+## 12. Designer review additions (0.15.1)
+
+List rows only. The UI reskin is **not** implemented; the one exception is the fervor ring non-colour cue, which shipped in 0.15.1.
+
+| Element | Current | Proposed | Method | Pri | Source | Count |
+|---|---|---|---|---|---|---|
+| Bloc colour table | Per-bloc nation colours (EARTH_NATION_COLORS), not CVD-checked | 14-entry table: 8 colourblind-safe hues (Okabe-Ito based) × light/dark; verify with a CVD simulation (protan/deutan/tritan); the flag is always shown as a second cue | Code + CVD sim script | P1 | code | 14 entries |
+| Fervor non-colour cue | Green → amber → red ring | **Done in 0.15.1:** ring split into 3 segments, 1/2/3 lit (<50%, 50–80%, ≥80% of threshold), plus a dashed outer ring when critical (≥90%); colour kept as a second cue | Code (`pinIcon.ts` `fervorCue`) | P1 | code | 1 |
+| Alert red token | Several reds (#ef4444, #E5484D, bloc/flag reds) | One alert-red token (Designer danger #E5484D); flag reds (gules/rust) never used in alert UI | Code (tokens) | P1 | code | 1 token |
+| Font fallback | system-ui | Plex-metric system fallback stack (size-adjust / ascent overrides) so layout doesn't jump before Plex loads | Code (CSS @font-face) | P1 | code | 2 faces |
+| UI states | Mostly none | Empty, loading, disabled and error states for windows/cards/buttons + a turn-transition indicator | Code | P2 | code | ~5 states + 1 indicator |
+| Motion + legibility | No reduced-motion handling; some muted text <11px | `prefers-reduced-motion` (no globe auto-spin, no dash flow) and a ≥11px minimum for muted text | Code (CSS) | P2 | code | global |
+| Legend window | Collapsible legend text under the globes | Legend window: anatomy of a pin (head, level, fervor ring, badge, alerts, stem tiers) + route colours | Code + 24px sprite | P2 | code | 1 window |
+| Small-viewport docking | Side windows dock left/right at any width | Rules for small viewports: auto-minimize to the tray, single dock side, bottom sheet under ~900px | Code | P2 | code | 1 rule set |
+| Favicon + OG image | None | Favicon (SVG + 32px PNG) and a 1200×630 OG share image | Code (SVG) / rfab for OG art | P3 | code / rfab | 2–3 files |
+
 ---
 
 ## P1 summary (do first)
 
 1. **Tokens and chrome:** Designer palette, Plex Sans/Mono self-hosted, chamfered flat panels with amber active rule, 3 button variants. All code, no art budget.
 2. **Icon sprite:** 24px 1.5px-stroke sprite covering 19 resource nodes plus about 20 UI/alert icons, reused in pins, cards, needs tree and route midpoints.
-3. **Flags:** vexillology-based generator (0.15.0, in progress), 14 Earth base flags, real tinctures kept over the muted UI palette.
+3. **Flags:** vexillology-based generator (shipped 0.15.0; 0.15.1 small mode, lighter keyline, multinational fixes), 14 Earth base flags, real tinctures kept over the muted UI palette.
 4. **Pins and routes restyle:** keep Tiago's pin and route-flag designs, restyle in the token system, routes in `#4C9BE8` with resource icon and dash flow.
 5. **Cards:** colony, supplier and needs-tree cards moved to the 4px-stripe card system. Supplier flag stays centred (Tiago) unless he okays the Designer's top-left.
+6. **Accessibility (Designer review, 0.15.1):** CVD-checked 14-entry bloc colour table with the flag as second cue, fervor non-colour cue (shipped), one alert-red token, Plex-metric font fallback.
 
 **Globe textures** (Designer P1) are already shipped from NASA and are listed as P2 polish here.
 
