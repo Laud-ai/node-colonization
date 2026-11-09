@@ -40,6 +40,15 @@ function latLonToVector3(lat: number, lon: number, r: number, t = new THREE.Vect
   return t.set(-Math.cos(phi) * s * r, Math.cos(theta) * r, Math.sin(phi) * s * r);
 }
 
+export interface GlobeRoute {
+  id: string; kind: "regional" | "outer"; color: string;
+  /** regional: a = source, b = destination. outer: a = this colony's site. */
+  a: { lat: number; lon: number }; b?: { lat: number; lon: number };
+  twoWay: boolean;
+  /** outer only */
+  inbound?: boolean; otherBody?: string; flagSvg?: string; label?: string; fanIndex?: number;
+}
+
 interface Pin {
   m: GlobeMarker; root: THREE.Group; pickables: THREE.Object3D[]; key: string;
   textures: THREE.Texture[]; materials: THREE.Material[]; geos: THREE.BufferGeometry[];
@@ -136,6 +145,101 @@ export class GlobeView {
       mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true;
       this.el.dataset.texture = "loaded";
     }, undefined, () => { this.el.dataset.texture = "failed"; });
+  }
+
+  private routeRoot = new THREE.Group();
+  private routeKey = "";
+  private routeDisposables: { dispose(): void }[] = [];
+
+  /** 0.14.1 trade routes: regional arcs across the surface, outer lines into space with a flag label. */
+  setRoutes(routes: GlobeRoute[], visible: boolean): void {
+    this.routeRoot.visible = visible;
+    if (!this.routeRoot.parent) this.group.add(this.routeRoot);
+    const key = JSON.stringify(routes);
+    if (key === this.routeKey) return;
+    this.routeKey = key;
+    this.routeDisposables.forEach((d) => d.dispose());
+    this.routeDisposables = [];
+    this.routeRoot.clear();
+    const coneGeo = new THREE.ConeGeometry(0.013, 0.038, 10);
+    this.routeDisposables.push(coneGeo);
+    const UP = new THREE.Vector3(0, 1, 0);
+    const cone = (mat: THREE.Material, at: THREE.Vector3, dir: THREE.Vector3) => {
+      const c = new THREE.Mesh(coneGeo, mat);
+      c.position.copy(at);
+      c.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+      this.routeRoot.add(c);
+    };
+    for (const r of routes) {
+      const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(r.color) });
+      this.routeDisposables.push(mat);
+      if (r.kind === "regional" && r.b) {
+        const va = latLonToVector3(r.a.lat, r.a.lon, 1).normalize();
+        const vb = latLonToVector3(r.b.lat, r.b.lon, 1).normalize();
+        const ang = va.angleTo(vb);
+        const lift = 0.025 + 0.12 * (ang / Math.PI);
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i <= 32; i++) {
+          const t = i / 32;
+          const v = new THREE.Vector3().copy(va).lerp(vb, t);
+          if (v.lengthSq() < 1e-6) v.set(0, 1, 0);
+          v.normalize().multiplyScalar(RADIUS + DECAL_OFFSET + lift * Math.sin(Math.PI * t));
+          pts.push(v);
+        }
+        const curve = new THREE.CatmullRomCurve3(pts);
+        const geo = new THREE.TubeGeometry(curve, 48, 0.0035, 6, false);
+        this.routeDisposables.push(geo);
+        this.routeRoot.add(new THREE.Mesh(geo, mat));
+        cone(mat, curve.getPointAt(0.88), curve.getTangentAt(0.88));
+        if (r.twoWay) cone(mat, curve.getPointAt(0.12), curve.getTangentAt(0.12).negate());
+      } else {
+        const n = latLonToVector3(r.a.lat, r.a.lon, 1).normalize();
+        let t1 = new THREE.Vector3().crossVectors(n, UP);
+        if (t1.lengthSq() < 1e-4) t1 = new THREE.Vector3(1, 0, 0);
+        t1.normalize().applyAxisAngle(n, (r.fanIndex || 0) * 1.25);
+        const dir = n.clone().add(t1.multiplyScalar(0.45)).normalize();
+        const start = n.clone().multiplyScalar(RADIUS + DECAL_OFFSET);
+        const end = start.clone().add(dir.clone().multiplyScalar(0.42));
+        const geo = new THREE.TubeGeometry(new THREE.LineCurve3(start, end), 4, 0.0035, 6, false);
+        this.routeDisposables.push(geo);
+        this.routeRoot.add(new THREE.Mesh(geo, mat));
+        if (r.inbound || r.twoWay) cone(mat, start.clone().add(dir.clone().multiplyScalar(0.06)), dir.clone().negate());
+        if (!r.inbound || r.twoWay) cone(mat, end.clone(), dir);
+        // Flag + label at the far end
+        const cw = 256, ch = 80;
+        const canvas = document.createElement("canvas");
+        canvas.width = cw; canvas.height = ch;
+        const ctx = canvas.getContext("2d")!;
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const paint = (img?: HTMLImageElement) => {
+          ctx.clearRect(0, 0, cw, ch);
+          ctx.fillStyle = "rgba(8,12,22,0.85)";
+          ctx.strokeStyle = r.color; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.roundRect(2, 2, cw - 4, ch - 4, 10); ctx.fill(); ctx.stroke();
+          if (img) ctx.drawImage(img, 10, 14, 72, 48);
+          ctx.fillStyle = "#e8eefc"; ctx.font = "700 22px system-ui, sans-serif"; ctx.textBaseline = "top";
+          ctx.fillText(`${r.inbound ? "←" : "→"} ${r.otherBody ?? ""}`, 92, 12);
+          ctx.font = "16px system-ui, sans-serif"; ctx.fillStyle = "#cbd5e1";
+          ctx.fillText((r.label ?? "").slice(0, 22), 92, 44);
+          tex.needsUpdate = true;
+        };
+        paint();
+        if (r.flagSvg) {
+          const img = new Image();
+          img.onload = () => paint(img);
+          img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.flagSvg.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" '));
+        }
+        const smat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, transparent: true });
+        const sprite = new THREE.Sprite(smat);
+        sprite.position.copy(end.clone().add(dir.clone().multiplyScalar(0.05)));
+        sprite.scale.set(0.2, 0.0625, 1);
+        sprite.renderOrder = 5;
+        this.routeRoot.add(sprite);
+        this.routeDisposables.push(tex, smat);
+      }
+    }
+    this.el.dataset.routes = String(routes.length);
   }
 
   private style: MarkerStyle = "pin";

@@ -108,6 +108,25 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   await expect(needsWin).toBeVisible();
   await page.screenshot({ path: path.join(smokeDir, "map-first.png") });
 
+  // 0.14.1 trade routes layer renders and toggles
+  await expect(page.locator("#globeMoon")).toHaveAttribute("data-routes", /\d+/);
+  const routeCount = Number(await page.locator("#globeMoon").getAttribute("data-routes"))
+    + Number(await page.locator("#globeMars").getAttribute("data-routes"));
+  expect(routeCount).toBeGreaterThanOrEqual(0);
+  await expect(page.locator("#btnRoutes")).toHaveAttribute("aria-pressed", "true");
+  await page.locator("#btnRoutes").click();
+  await expect(page.locator("#btnRoutes")).toHaveAttribute("aria-pressed", "false");
+  await page.locator("#btnRoutes").click();
+  await expect(page.locator("#btnRoutes")).toHaveAttribute("aria-pressed", "true");
+  // Late game (more colonies + routes) with the map-first layout
+  await page.locator("#simN").fill("60");
+  await page.locator("#btnSim").click();
+  await expect(page.locator("#turn")).toHaveText("80");
+  await expect.poll(async () => Number(await page.locator("#globeMoon").getAttribute("data-routes"))
+    + Number(await page.locator("#globeMars").getAttribute("data-routes"))).toBeGreaterThan(0);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(smokeDir, "routes-late-game.png") });
+
   // Back to lobby for version picker
   await page.locator("#btnNew").click();
   await expect(page.locator("#setupScreen")).toBeVisible();

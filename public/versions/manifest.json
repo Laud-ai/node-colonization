@@ -1,6 +1,13 @@
 {
-  "live": "0.14.0",
+  "live": "0.14.1",
   "versions": [
+    {
+      "version": "0.14.1",
+      "summary": "Trade routes on the Moon / Mars globes",
+      "available": true,
+      "date": "2026-11-09",
+      "path": "versions/0.14.1/index.html"
+    },
     {
       "version": "0.14.0",
       "summary": "Needs tree, supplier cards, map-first layout",

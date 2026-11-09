@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Node Colonization — 0.14.0</title>
+    <title>Node Colonization — 0.14.1</title>
     <link rel="stylesheet" href="/src/ui/style.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
     <div id="setupScreen" class="setup-screen">
       <div class="setup-card">
         <div class="setup-brand">
-          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.14.0</span></h1>
+          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.14.1</span></h1>
           <p class="setup-blurb">
             Pre-simulation lobby for <b>fervor</b> and <b>solar-bloc / diplomacy</b> experiments.
             Pick presets on each tab, confirm the threshold, then begin. Defaults:
@@ -84,7 +84,7 @@
     <div id="playScreen" class="play-screen map-first" hidden>
       <header class="topbar">
         <div class="brand">
-          <h1>NODE COLONIZATION <span class="badge">0.14.0 / MAP</span></h1>
+          <h1>NODE COLONIZATION <span class="badge">0.14.1 / ROUTES</span></h1>
           <div class="meta">Turn <b id="turn">1</b> · Acting: <b id="acting">—</b> · Phase: <b id="phase">Colony</b></div>
         </div>
         <div class="toolbar">
@@ -117,9 +117,10 @@
             <button type="button" data-marker-style="pin" class="selected">Pins</button>
             <button type="button" data-marker-style="glyph">Glyphs</button>
           </div>
+          <div class="globe-modes"><button type="button" id="btnRoutes" class="selected" aria-pressed="true" title="Show trade routes: arcs = regional (same body), lines into space = outer (Earth↔Moon, Moon↔Mars) with the partner's flag">Routes</button></div>
           <span class="sub">Drag to rotate · wheel to zoom · hover / click a marker</span>
         </div>
-        <details class="pin-legend tags"><summary>Legend</summary>Pin: head = bloc color (white = Independent) · number = level · stem short L1–4 / medium L5–9 / tall L10+ · ring = fervor toward independence (green → amber → red) · badge = specialty · pulsing red = strain or survival clock · ⚔ = invasion / proxy war · dashed = founded this turn</details>
+        <details class="pin-legend tags"><summary>Legend</summary>Pin: head = bloc color (white = Independent) · number = level · stem short L1–4 / medium L5–9 / tall L10+ · ring = fervor toward independence (green → amber → red) · badge = specialty · pulsing red = strain or survival clock · ⚔ = invasion / proxy war · dashed = founded this turn<br/>Routes: arc across the surface = regional trade (arrow = direction, two arrows = two-way) · line into space = outer trade with Earth / Moon / Mars; the label shows the partner's flag, name and resource.</details>
         <div id="globeWrap" class="globe-wrap mode-both">
           <div id="globeMoon" class="globe-slot"></div>
           <div id="globeMars" class="globe-slot"></div>

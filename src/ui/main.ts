@@ -1,6 +1,7 @@
 import { flagSvg, solarMapSvg } from "./flags.js";
 import { SiteBook } from "./colonySites.js";
-import type { GlobeMarker, GlobeView, MarkerStyle } from "./globe.js";
+import type { GlobeMarker, GlobeRoute, GlobeView, MarkerStyle } from "./globe.js";
+import { NODE_COLORS } from "../nodes.js";
 import { SPECIALTY_CODE } from "./pinIcon.js";
 import { initWindows, openWindow, isOpen } from "./windows.js";
 import { needsTreeHtml, suppliersHtml } from "./needsView.js";
@@ -263,6 +264,18 @@ let sites: SiteBook | null = null;
 let globes: { Moon: GlobeView; Mars: GlobeView } | null = null;
 let globesLoading = false;
 let markerStyle: MarkerStyle = (() => { try { return localStorage.getItem("nc.markerStyle") === "glyph" ? "glyph" : "pin"; } catch { return "pin"; } })();
+let showRoutes = (() => { try { return localStorage.getItem("nc.routes") !== "off"; } catch { return true; } })();
+function syncRoutesButton(): void {
+  const b = document.getElementById("btnRoutes");
+  if (b) { b.classList.toggle("selected", showRoutes); b.setAttribute("aria-pressed", String(showRoutes)); }
+}
+syncRoutesButton();
+document.getElementById("btnRoutes")?.addEventListener("click", () => {
+  showRoutes = !showRoutes;
+  try { localStorage.setItem("nc.routes", showRoutes ? "on" : "off"); } catch { /* private mode */ }
+  syncRoutesButton();
+  if (session) renderGlobes(session.snapshot());
+});
 function syncStyleButtons(): void {
   document.querySelectorAll<HTMLElement>("[data-marker-style]").forEach((b) => b.classList.toggle("selected", b.dataset.markerStyle === markerStyle));
 }
@@ -332,6 +345,35 @@ function renderGlobes(snap: UiSnapshot): void {
   }
   globes.Moon.update(by.Moon, snap.selectedId);
   globes.Mars.update(by.Mars, snap.selectedId);
+  // 0.14.1 trade routes on the bodies
+  const rt: Record<"Moon" | "Mars", GlobeRoute[]> = { Moon: [], Mars: [] };
+  const fan = new Map<string, number>();
+  const nextFan = (id: string) => { const n = fan.get(id) ?? 0; fan.set(id, n + 1); return n; };
+  for (const r of snap.routes) {
+    const to = placed.get(r.toId);
+    if (!to) continue;
+    const color = NODE_COLORS[r.node] || "#94a3b8";
+    const counter = r.counterNode ? ` ⇄ ${r.counterNode}` : "";
+    if (r.fromKind === "colony" && r.fromBody === r.toBody) {
+      const from = placed.get(r.fromId);
+      if (!from) continue;
+      rt[r.toBody].push({ id: r.id, kind: "regional", color, a: from, b: to, twoWay: !!r.counterNode });
+      continue;
+    }
+    rt[r.toBody].push({
+      id: r.id, kind: "outer", color, a: to, inbound: true, twoWay: !!r.counterNode, otherBody: String(r.fromBody),
+      flagSvg: flagSvg(r.fromFlagKey, r.fromColor, 30, 20), label: `${r.fromName} · ${r.node}${counter}`, fanIndex: nextFan(r.toId),
+    });
+    if (r.fromKind === "colony" && r.fromBody !== "Earth") {
+      const from = placed.get(r.fromId);
+      if (from) rt[r.fromBody as "Moon" | "Mars"].push({
+        id: r.id + ":out", kind: "outer", color, a: from, inbound: false, twoWay: !!r.counterNode, otherBody: r.toBody,
+        flagSvg: flagSvg(r.toFlagKey, r.toColor, 30, 20), label: `${r.toName} · ${r.node}${counter}`, fanIndex: nextFan(r.fromId),
+      });
+    }
+  }
+  globes.Moon.setRoutes(rt.Moon, showRoutes);
+  globes.Mars.setRoutes(rt.Mars, showRoutes);
 }
 document.querySelector(".globe-modes")?.addEventListener("click", (e) => {
   const btn = (e.target as HTMLElement).closest("[data-globe-mode]") as HTMLElement | null;

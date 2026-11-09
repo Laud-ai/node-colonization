@@ -112,6 +112,14 @@ export interface IndependentGroupSnap {
   liegeId: string; liegeName: string; members: string[]; colonyCount: number; totalRp: number;
   nationRp: number; nationColor: string; solarBlocName?: string; leadingNation?: boolean;
 }
+/** 0.14.1 active trade route (importer side), for drawing on the globes. */
+export interface RouteSnap {
+  id: string; node: NodeType; toId: string; toName: string; toBody: Body;
+  fromKind: "earth" | "colony"; fromId: string; fromName: string; fromBody: "Earth" | Body;
+  fromColor: string; fromFlagKey: string; toColor: string; toFlagKey: string;
+  /** Consented bilateral counter (partner receives counterNode too). */
+  counterNode: NodeType | null;
+}
 export interface UiSnapshot {
   turn: number; seed: number; phase: string; actingId: string | null; actingName: string | null;
   selectedId: string | null; canFound: boolean; foundingTaxHint: string | null;
@@ -123,6 +131,7 @@ export interface UiSnapshot {
   independenceThreshold: number;
   threatLevel: number;
   bodyLivable: Record<string, boolean>;
+  routes: RouteSnap[];
 }
 
 function snapLines(G: GameState, c: Colony): LineSnap[] {
@@ -259,6 +268,32 @@ function recentInvasionMention(G: GameState, name: string): boolean {
     if (e.msg.startsWith("⚔") && e.msg.includes(name)) return true;
   }
   return false;
+}
+
+function colonyFlagKey(c: Colony): string {
+  return `${c.name}|${c.culture.join("/")}|${c.ideology[0] || ""}`;
+}
+function snapRoutes(G: GameState): RouteSnap[] {
+  const out: RouteSnap[] = [];
+  for (const c of G.colonies) {
+    for (const l of c.logisticsLines) {
+      const r = l.route;
+      if (!r || r.trojan || l.trojanExport) continue;
+      const src = r.sourceKind === "colony" ? G.colonies.find((x) => x.id === r.sourceId) : undefined;
+      if (r.sourceKind === "colony" && !src) continue;
+      const bloc = r.sourceKind === "earth" ? G.blocs.find((b) => b.name === r.sourceId || b.name === r.sourceName) : undefined;
+      out.push({
+        id: `${c.id}:${l.id}`, node: r.node, toId: c.id, toName: c.name, toBody: c.body,
+        fromKind: r.sourceKind, fromId: r.sourceId, fromName: src?.name ?? bloc?.name ?? r.sourceName,
+        fromBody: src ? src.body : "Earth",
+        fromColor: src ? nationColorForColony(src) : (bloc?.nationColor || nationColorForEarth(bloc?.name ?? r.sourceName)),
+        fromFlagKey: src ? colonyFlagKey(src) : (bloc?.name ?? r.sourceName),
+        toColor: nationColorForColony(c), toFlagKey: colonyFlagKey(c),
+        counterNode: r.counterConsent && r.counterNode ? r.counterNode : null,
+      });
+    }
+  }
+  return out;
 }
 
 function snapColony(G: GameState, c: Colony, actingId: string | null): ColonySnap {
@@ -611,6 +646,7 @@ export class GameSession {
       leadingNationLabel: lead ? `${lead.label} (Nation RP ${lead.nationRp})` : null,
       independenceThreshold: independenceThresholdOf(G),
       threatLevel: threatLevel(G),
+      routes: snapRoutes(G),
       bodyLivable: {
         Moon: (G.bodyTF.Moon || 0) >= 10,
         Mars: (G.bodyTF.Mars || 0) >= 10,
