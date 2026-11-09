@@ -1,4 +1,4 @@
-import { applyRules, type Rules } from "./rules.js";
+import { applyRules, ruleNum, type Rules } from "./rules.js";
 import type { FlagDesign } from "./flagDesign.js";
 import { flagForColony, flagForEarth } from "./flagLineage.js";
 import { needsTree, listSuppliers, type TreeNode, type Supplier } from "./needs.js";
@@ -135,6 +135,8 @@ export interface UiSnapshot {
   moveOptions: MoveOption[]; turnAnnouncements: string[]; log: LogEntry[];
   leadingNationLabel: string | null;
   independenceThreshold: number;
+  /** Survival clock trip (rule refugeeClockTrip; 3 without rules). */
+  clockTrip: number;
   threatLevel: number;
   bodyLivable: Record<string, boolean>;
   routes: RouteSnap[];
@@ -652,6 +654,7 @@ export class GameSession {
       turnAnnouncements: G.turnAnnouncements.slice(), log: [...G.log].reverse(),
       leadingNationLabel: lead ? `${lead.label} (Nation RP ${lead.nationRp})` : null,
       independenceThreshold: independenceThresholdOf(G),
+      clockTrip: G.rules ? ruleNum(G, "refugeeClockTrip") : 3,
       threatLevel: threatLevel(G),
       routes: snapRoutes(G),
       bodyLivable: {

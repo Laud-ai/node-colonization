@@ -1,6 +1,6 @@
 # AGENTS.md — Node Colonization
 
-Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.15.4** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags).
+Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.16.0** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags; survival clocks keyed to a native Population).
 
 **Live (GitHub Pages):** https://laud-ai.github.io/node-colonization/  
 **Repo:** https://github.com/Laud-ai/node-colonization
@@ -43,6 +43,7 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 | `src/rules.ts` | Live rule flags (Rules tab) |
 | `src/fervorVariants.ts` / `src/solarBlocVariants.ts` | Lobby presets |
 | `src/l3.ts`–`src/l7.ts` | Layered features (fervor, survival, projects, flags/map, geopolitics) |
+| `src/l4.ts` `tickSurvivalClocks` | 0.16.0 (Tiago, rule `survivalNeedsPopulation`, default on): the Food / Water / Oxygen clock ticks only while the colony has its **own** Population (`hasNativePopulation`: developed or specialty; imported Population needs nothing) **and** lacks that resource (`extras ≤ 0`: not owned, not imported). Strain is not a gate. Oxygen still never ticks on a livable body. Recovery (`refugeeClockRecovery`) decays a clock by 1 per tick when its condition is off. Rule off / no `G.rules` = old strain-gated behaviour (determinism tests). Never show `/3` — the UI reads `UiSnapshot.clockTrip` |
 | `src/needs.ts` | 0.15.3 states (`classifyNeed`): specialty / developed / imported / missing / expand / locked — owned states win; `short` = owned but under-covered. 0.15.4 (Tiago): **missing (red) only for a direct prerequisite of a developed node that the colony lacks** (`neededByDeveloped`; mirrors sim strain, which only developed nodes create) — never just for Requires/basal; **grey** = basics (BASAL_NODES) or nodes whose prerequisites are all owned; **locked** = the rest. Supplier ranking still uses `missingNodes`/`noStrainExpansions`. 0.14.0 read-only analysis: `missingNodes`, `noStrainExpansions` (engine `strainOf` on a copy), `needsTree`, `listSuppliers` + `compareSuppliers` (uses `findSources`/`listMoves`/`rankTradeSource`) |
 | `src/runSim.ts` / `src/cli.ts` | Headless entry |
 | `src/ui/main.ts` + `index.html` | Lobby + play UI (0.14.0 map-first: globes fill the stage, panels are `.win` side windows) |
@@ -64,7 +65,7 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 | `tests/*.test.ts` | Node test suite (`npm test`) |
 | `.github/workflows/pages.yml` | CI test + build + GitHub Pages deploy |
 
-Sims (no rebuild needed between runs): `npm run sim`, `sim:fervor`, `sim:solar`, `sim:growth -- <turns> <seeds> [variant]`.
+Sims (no rebuild needed between runs): `npm run sim`, `sim:fervor`, `sim:solar`, `sim:growth -- <turns> <seeds> [variant]` (`CLOCKS_OLD=1` = pre-0.16 clocks), `sim:clocks -- <turns> <seeds>` (`MODES=legacy,legacyPop,v094,v016`: clock advances / refugee events and how many came from colonies without a native Population; debug trace via `G.__clockTrace`).
 
 ## Required checks before shipping
 

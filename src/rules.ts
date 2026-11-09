@@ -26,6 +26,8 @@ export const RULE_DEFS: RuleDef[] = [
     help: "After a refugee event, the same colony can't emit again for this many turns." },
   { id: "refugeeClockRecovery", label: "Clocks recover when need met", group: "Refugees", kind: "bool", def: true, legacy: false,
     help: "Survival clocks tick back down on turns the need is covered." },
+  { id: "survivalNeedsPopulation", label: "Survival clocks need a native Population (0.16.0)", group: "Refugees", kind: "bool", def: true, legacy: false,
+    help: "On (Tiago's rule): the Food / Water / Oxygen clock ticks only while the colony has its own (developed or specialty) Population and lacks that resource (not owned, not imported). Strain alone never ticks a clock; imported Population needs nothing. Off = 0.9.x–0.15.x: any strain + lacking the resource ticked the clock, Population or not." },
   { id: "l5Thrust", label: "L5 Thrust: Thrust gives Mars reach without lunar basis", group: "L5 Projects / Thrust", kind: "bool", def: true, legacy: false,
     help: "Any same-nation colony with Thrust extras (or an Orbital Shipyard) opens Mars founding." },
   { id: "l5Projects", label: "L5 Projects (rule-changing megaprojects)", group: "L5 Projects / Thrust", kind: "bool", def: true, legacy: false,

@@ -326,9 +326,9 @@ function renderGlobes(snap: UiSnapshot): void {
     const fresh = c.foundedTurn === snap.turn && snap.turn > 1;
     const alerts: string[] = [];
     if (c.strain > 0) alerts.push(`strain ${c.strain}`);
-    if (c.foodClock > 0) alerts.push(`food clock ${c.foodClock}`);
-    if (c.waterClock > 0) alerts.push(`water clock ${c.waterClock}`);
-    if (c.oxygenClock > 0) alerts.push(`O₂ clock ${c.oxygenClock}`);
+    if (c.foodClock > 0) alerts.push(`food clock ${c.foodClock}/${snap.clockTrip || 3}`);
+    if (c.waterClock > 0) alerts.push(`water clock ${c.waterClock}/${snap.clockTrip || 3}`);
+    if (c.oxygenClock > 0) alerts.push(`O₂ clock ${c.oxygenClock}/${snap.clockTrip || 3}`);
     if (c.atWar) alerts.push(c.proxyAgitation > 0 ? `proxy war (agitation ${c.proxyAgitation})` : "invasion");
     if (fresh) alerts.push("founded this turn");
     by[c.body].push({
@@ -505,9 +505,10 @@ function renderDetail(snap: UiSnapshot): void {
     ? `<div class="tags">Independent · liege ${esc(sel.liegeId || "—")}</div>`
     : `<div class="tags need">Fervor ${sel.fervor}</div>`;
   const clockDetailBits: string[] = [];
-  if (sel.foodClock > 0) clockDetailBits.push(`Food clock ${sel.foodClock}/3`);
-  if (sel.waterClock > 0) clockDetailBits.push(`Water clock ${sel.waterClock}/3`);
-  if (sel.oxygenClock > 0) clockDetailBits.push(`Oxygen clock ${sel.oxygenClock}/3`);
+  const trip = snap.clockTrip || 3;
+  if (sel.foodClock > 0) clockDetailBits.push(`Food clock ${sel.foodClock}/${trip} (no Food)`);
+  if (sel.waterClock > 0) clockDetailBits.push(`Water clock ${sel.waterClock}/${trip} (no Water)`);
+  if (sel.oxygenClock > 0) clockDetailBits.push(`Oxygen clock ${sel.oxygenClock}/${trip} (no Oxygen)`);
   if (sel.populationStress > 0) clockDetailBits.push(`Pop stress ${sel.populationStress}`);
   if (sel.hasMilitaryToken) clockDetailBits.push("Invasion token ready");
   if (sel.bodyLivable) clockDetailBits.push("Body livable (TF≥10)");

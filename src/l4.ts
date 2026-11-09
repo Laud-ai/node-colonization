@@ -282,6 +282,17 @@ export function annexColony(G: GameState, victor: Colony, defender: Colony): voi
   );
 }
 
+/**
+ * 0.16.0: a colony's own Population (developed, or the specialty itself). Imported Population
+ * lives off its home colony's supplies, so it never needs Food / Water / Oxygen here.
+ */
+export function hasNativePopulation(c: Colony): boolean {
+  return (c.developed.Population || 0) > 0 || c.specialty === "Population";
+}
+
+/** Debug-only trace (set `G.__clockTrace = []` in a probe); never serialized by the game. */
+export interface ClockTraceEntry { turn: number; colony: string; kind: SurvivalClockKind; /** 1 if native (developed/specialty) Population */ devPop: number; totalPop: number; strain: number; fired: boolean }
+
 /** Ensure clock fields exist. */
 export function ensureClocks(c: Colony): void {
   if (c.foodClock == null) c.foodClock = 0;
@@ -295,14 +306,22 @@ export function ensureClocks(c: Colony): void {
  */
 export function tickSurvivalClocks(G: GameState, c: Colony, rng: Rng): void {
   ensureClocks(c);
-  if (strainOf(c) <= 0) return;
+  // 0.16.0 (Tiago): clocks belong to a native Population, not to strain.
+  const popRule = !!G.rules && ruleOn(G, "survivalNeedsPopulation");
+  if (!popRule && strainOf(c) <= 0) return; // 0.9.x–0.15.x gate: any strain
   if (hasHealth(c) && G.turn % 2 === 0) return; // every other turn
 
-  const lacking = (n: NodeType) => extras(c, n) <= 0;
+  // Re-checked per clock: if a refugee wave just took the last native Population, later clocks stop.
+  const lacking = (n: NodeType) => (popRule ? hasNativePopulation(c) : true) && extras(c, n) <= 0;
   const trip = G.rules ? ruleNum(G, "refugeeClockTrip") : SURVIVAL_CLOCK_TRIP;
   const cdOk0 = () => !G.rules || G.turn - (c.lastRefugeeTurn ?? -999) >= ruleNum(G, "refugeeColonyCooldown");
   const recover = !!G.rules && ruleOn(G, "refugeeClockRecovery");
-  const fire = (k: SurvivalClockKind) => { emitRefugees(G, c, k, rng); c.lastRefugeeTurn = G.turn; };
+  const trace = (G as unknown as { __clockTrace?: ClockTraceEntry[] }).__clockTrace;
+  const fire = (k: SurvivalClockKind) => {
+    trace?.push({ turn: G.turn, colony: c.id, kind: k, devPop: hasNativePopulation(c) ? 1 : 0, totalPop: extras(c, "Population"), strain: strainOf(c), fired: true });
+    emitRefugees(G, c, k, rng); c.lastRefugeeTurn = G.turn;
+  };
+  const adv = (k: SurvivalClockKind) => trace?.push({ turn: G.turn, colony: c.id, kind: k, devPop: hasNativePopulation(c) ? 1 : 0, totalPop: extras(c, "Population"), strain: strainOf(c), fired: false });
   if (recover) {
     if (!lacking("Food") && (c.foodClock || 0) > 0) c.foodClock! -= 1;
     if (!lacking("Water") && (c.waterClock || 0) > 0) c.waterClock! -= 1;
@@ -310,21 +329,21 @@ export function tickSurvivalClocks(G: GameState, c: Colony, rng: Rng): void {
   }
 
   if (lacking("Food")) {
-    c.foodClock = (c.foodClock || 0) + 1;
+    c.foodClock = (c.foodClock || 0) + 1; adv("food");
     if ((c.foodClock || 0) >= trip && cdOk0()) {
       fire("food");
       c.foodClock = 0;
     }
   }
   if (lacking("Water")) {
-    c.waterClock = (c.waterClock || 0) + 1;
+    c.waterClock = (c.waterClock || 0) + 1; adv("water");
     if ((c.waterClock || 0) >= trip && cdOk0()) {
       fire("water");
       c.waterClock = 0;
     }
   }
   if (!isBodyLivable(G, c.body) && lacking("Oxygen")) {
-    c.oxygenClock = (c.oxygenClock || 0) + 1;
+    c.oxygenClock = (c.oxygenClock || 0) + 1; adv("oxygen");
     if ((c.oxygenClock || 0) >= trip && cdOk0()) {
       fire("oxygen");
       c.oxygenClock = 0;

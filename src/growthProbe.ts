@@ -9,7 +9,7 @@ const fv = process.argv[4];
 for (const seed of seeds) {
   const rng = mulberry32(seed);
   const G = createGame(seed, rng);
-  if (process.env.LEGACY !== "1") applyRules(G);
+  if (process.env.LEGACY !== "1") applyRules(G, process.env.CLOCKS_OLD === "1" ? { survivalNeedsPopulation: false } : {});
   if (fv) applyFervorParams(G, variantById(fv)!.params);
   const at: Record<number, number> = {};
   for (let t = 1; t <= turns; t++) { runTurn(G, rng); if ([10, 40, 80, 120, 150].includes(t)) at[t] = G.colonies.length; }
