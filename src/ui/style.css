@@ -766,3 +766,4 @@ th {
 .globe-tip-title { font-weight: 700; border-left: 4px solid; padding-left: 6px; margin-bottom: 3px; }
 .globe-credit { margin-top: 4px; font-size: 10px; opacity: 0.7; }
 @media (max-width: 800px) { .globe-wrap.mode-both { grid-template-columns: 1fr; height: 640px; } }
+.pin-legend { font-size: 11px; opacity: 0.8; margin: 0 0 6px; }

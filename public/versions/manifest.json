@@ -1,6 +1,13 @@
 {
-  "live": "0.13.0",
+  "live": "0.13.1",
   "versions": [
+    {
+      "version": "0.13.1",
+      "summary": "Pin markers on the Moon / Mars globes",
+      "available": true,
+      "date": "2026-11-09",
+      "path": "versions/0.13.1/index.html"
+    },
     {
       "version": "0.13.0",
       "summary": "3D Moon + Mars globes as the live solar view",

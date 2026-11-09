@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Node Colonization — 0.13.0</title>
+    <title>Node Colonization — 0.13.1</title>
     <link rel="stylesheet" href="/src/ui/style.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
     <div id="setupScreen" class="setup-screen">
       <div class="setup-card">
         <div class="setup-brand">
-          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.13.0</span></h1>
+          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.13.1</span></h1>
           <p class="setup-blurb">
             Pre-simulation lobby for <b>fervor</b> and <b>solar-bloc / diplomacy</b> experiments.
             Pick presets on each tab, confirm the threshold, then begin. Defaults:
@@ -84,7 +84,7 @@
     <div id="playScreen" class="play-screen" hidden>
       <header>
         <div class="brand">
-          <h1>NODE COLONIZATION <span class="badge">0.13.0 / GLOBES</span></h1>
+          <h1>NODE COLONIZATION <span class="badge">0.13.1 / PINS</span></h1>
           <div class="meta">
             Turn <b id="turn">1</b>
             · Acting: <b id="acting">—</b>
@@ -124,8 +124,13 @@
             <button type="button" data-globe-mode="moon">Moon</button>
             <button type="button" data-globe-mode="mars">Mars</button>
           </div>
-          <span class="sub">Drag to rotate · wheel to zoom · hover / click a marker · glyph = level, color = bloc</span>
+          <div class="globe-modes marker-styles" role="group" aria-label="Marker style">
+            <button type="button" data-marker-style="pin" class="selected">Pins</button>
+            <button type="button" data-marker-style="glyph">Glyphs</button>
+          </div>
+          <span class="sub">Drag to rotate · wheel to zoom · hover / click a marker</span>
         </div>
+        <div class="pin-legend tags">Pin: head = bloc color (white = Independent) · number = level · stem short L1–4 / medium L5–9 / tall L10+ · ring = fervor toward independence (green → amber → red) · badge = specialty · pulsing red = strain or survival clock · ⚔ = invasion / proxy war · dashed = founded this turn</div>
         <div id="globeWrap" class="globe-wrap mode-both">
           <div id="globeMoon" class="globe-slot"></div>
           <div id="globeMars" class="globe-slot"></div>

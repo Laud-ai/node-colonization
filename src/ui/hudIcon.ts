@@ -1,4 +1,5 @@
 /** HUD marker glyphs: L1–L20, drawn in the marker's color. */
+import { luminance } from "./pinIcon.js";
 
 export const MIN_LEVEL = 1;
 export const MAX_LEVEL = 20;
@@ -67,9 +68,10 @@ export function drawHudIcon(
   const cx = size / 2;
   const cy = size / 2;
   const stroke = Math.max(1.15, unit * 0.03);
-  const glow = selected ? size * 0.09 : size * 0.048;
+  const glow = (selected ? size * 0.09 : size * 0.048) * (luminance(ink) < 0.18 ? 1.6 : 1);
 
-  ctx.shadowColor = toRgba(ink, selected ? 0.95 : 0.72);
+  // 0.13.1: dark inks get a light halo so they read on the grey Moon
+  ctx.shadowColor = luminance(ink) < 0.18 ? "rgba(241,245,249,0.95)" : toRgba(ink, selected ? 0.95 : 0.72);
   ctx.shadowBlur = glow;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;

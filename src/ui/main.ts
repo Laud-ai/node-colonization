@@ -1,6 +1,7 @@
 import { flagSvg, solarMapSvg } from "./flags.js";
 import { SiteBook } from "./colonySites.js";
-import type { GlobeMarker, GlobeView } from "./globe.js";
+import type { GlobeMarker, GlobeView, MarkerStyle } from "./globe.js";
+import { SPECIALTY_CODE } from "./pinIcon.js";
 import {
   GameSession,
   randomSeed,
@@ -256,6 +257,19 @@ function renderSolarMap(snap: UiSnapshot): void {
 let sites: SiteBook | null = null;
 let globes: { Moon: GlobeView; Mars: GlobeView } | null = null;
 let globesLoading = false;
+let markerStyle: MarkerStyle = (() => { try { return localStorage.getItem("nc.markerStyle") === "glyph" ? "glyph" : "pin"; } catch { return "pin"; } })();
+function syncStyleButtons(): void {
+  document.querySelectorAll<HTMLElement>("[data-marker-style]").forEach((b) => b.classList.toggle("selected", b.dataset.markerStyle === markerStyle));
+}
+syncStyleButtons();
+document.querySelector(".marker-styles")?.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("[data-marker-style]") as HTMLElement | null;
+  if (!btn?.dataset.markerStyle) return;
+  markerStyle = btn.dataset.markerStyle === "glyph" ? "glyph" : "pin";
+  try { localStorage.setItem("nc.markerStyle", markerStyle); } catch { /* private mode */ }
+  syncStyleButtons();
+  globes?.Moon.setStyle(markerStyle); globes?.Mars.setStyle(markerStyle);
+});
 function selectFromGlobe(id: string): void {
   if (!session) return;
   session.select(id);
@@ -269,6 +283,7 @@ function renderGlobes(snap: UiSnapshot): void {
       $("globeStatus").textContent = "Loading globes…";
       import("./globe.js").then(({ GlobeView }) => {
         globes = { Moon: new GlobeView($("globeMoon"), "Moon", selectFromGlobe), Mars: new GlobeView($("globeMars"), "Mars", selectFromGlobe) };
+        globes.Moon.setStyle(markerStyle); globes.Mars.setStyle(markerStyle);
         $("globeStatus").textContent = "";
         if (session) renderGlobes(session.snapshot());
       }).catch((err: unknown) => {
@@ -285,13 +300,27 @@ function renderGlobes(snap: UiSnapshot): void {
   for (const c of snap.colonies) {
     const site = placed.get(c.id)!;
     const ideo = c.ideology.length ? c.ideology.join(" / ") : "—";
+    const thr = Math.max(1, snap.independenceThreshold || 10);
+    const need = c.strain > 0 || c.foodClock > 0 || c.waterClock > 0 || c.oxygenClock > 0;
+    const fresh = c.foundedTurn === snap.turn && snap.turn > 1;
+    const alerts: string[] = [];
+    if (c.strain > 0) alerts.push(`strain ${c.strain}`);
+    if (c.foodClock > 0) alerts.push(`food clock ${c.foodClock}`);
+    if (c.waterClock > 0) alerts.push(`water clock ${c.waterClock}`);
+    if (c.oxygenClock > 0) alerts.push(`O₂ clock ${c.oxygenClock}`);
+    if (c.atWar) alerts.push(c.proxyAgitation > 0 ? `proxy war (agitation ${c.proxyAgitation})` : "invasion");
+    if (fresh) alerts.push("founded this turn");
     by[c.body].push({
       id: c.id, lat: site.lat, lon: site.lon, level: c.level, color: c.nationColor || "#64748b",
+      independent: c.independent, fervor: c.independent ? null : Math.max(0, c.fervor) / thr,
+      specialty: c.specialty, alert: need, war: c.atWar, fresh,
       info: [
         c.name,
         `L${c.level} · ${c.body} · ${c.independent ? "Independent" : c.patron}`,
-        `RP ${c.rp} · Nation RP ${c.nationRp}${c.independent ? "" : ` · Fervor ${c.fervor}`}`,
+        `Specialty ${c.specialty} (${SPECIALTY_CODE[c.specialty]}) · requires ${c.requires}`,
+        `RP ${c.rp} · Nation RP ${c.nationRp}${c.independent ? "" : ` · Fervor ${c.fervor}/${thr}`}`,
         `Ideology: ${ideo}`,
+        ...(alerts.length ? [`⚠ ${alerts.join(" · ")}`] : []),
       ],
     });
   }

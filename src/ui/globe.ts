@@ -8,14 +8,20 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { clampLevel, drawHudIcon, worldPlaneSize } from "./hudIcon.js";
+import { drawAlertRing, drawPinHead, stemHeight } from "./pinIcon.js";
+import type { NodeType } from "../types.js";
 import moonUrl from "./textures/moon.jpg?url";
 import marsUrl from "./textures/mars.jpg?url";
 
 export type GlobeBody = "Moon" | "Mars";
+export type MarkerStyle = "pin" | "glyph";
 export interface GlobeMarker {
   id: string; lat: number; lon: number; level: number; color: string;
   /** Plain-text tooltip lines (first = title). */
   info: string[];
+  /** 0.13.1 pin fields. */
+  independent: boolean; fervor: number | null; specialty: NodeType;
+  alert: boolean; war: boolean; fresh: boolean;
 }
 
 const RADIUS = 1;
@@ -34,7 +40,13 @@ function latLonToVector3(lat: number, lon: number, r: number, t = new THREE.Vect
   return t.set(-Math.cos(phi) * s * r, Math.cos(theta) * r, Math.sin(phi) * s * r);
 }
 
-interface Pin { m: GlobeMarker; mesh: THREE.Mesh; tex: THREE.CanvasTexture; canvas: HTMLCanvasElement; key: string; }
+interface Pin {
+  m: GlobeMarker; root: THREE.Group; pickables: THREE.Object3D[]; key: string;
+  textures: THREE.Texture[]; materials: THREE.Material[]; geos: THREE.BufferGeometry[];
+  alert?: THREE.Sprite;
+}
+const PIN_HEAD_PX = 128;
+const PIN_SCALE = 0.095;
 
 const views = new Set<GlobeView>();
 let raf = 0;
@@ -126,43 +138,32 @@ export class GlobeView {
     }, undefined, () => { this.el.dataset.texture = "failed"; });
   }
 
+  private style: MarkerStyle = "pin";
+  setStyle(style: MarkerStyle): void {
+    if (style === this.style) return;
+    this.style = style;
+    for (const [id, p] of [...this.pins]) this.dispose(p, id);
+    this.update(this.lastMarkers, this.selectedId);
+  }
+  private lastMarkers: GlobeMarker[] = [];
+
   update(markers: GlobeMarker[], selectedId: string | null): void {
+    this.lastMarkers = markers;
     this.selectedId = selectedId;
     const live = new Set(markers.map((m) => m.id));
-    for (const [id, p] of this.pins) if (!live.has(id)) this.dispose(p, id);
+    for (const [id, p] of [...this.pins]) if (!live.has(id)) this.dispose(p, id);
     for (const m of markers) {
       const sel = m.id === selectedId;
-      const key = `${clampLevel(m.level)}|${m.color}|${sel ? 1 : 0}`;
-      let p = this.pins.get(m.id);
-      if (!p) {
-        const canvas = document.createElement("canvas");
-        canvas.width = canvas.height = HUD_CANVAS;
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.premultiplyAlpha = true;
-        const mat = new THREE.MeshBasicMaterial({
-          map: tex, transparent: true, premultipliedAlpha: true, depthWrite: false,
-          polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false,
-        });
-        const mesh = new THREE.Mesh(this.geo, mat);
-        mesh.userData.id = m.id;
-        mesh.renderOrder = 2;
-        this.group.add(mesh);
-        p = { m, mesh, tex, canvas, key: "" };
-        this.pins.set(m.id, p);
-      }
-      p.m = m;
-      const pos = latLonToVector3(m.lat, m.lon, RADIUS + DECAL_OFFSET);
-      p.mesh.position.copy(pos);
-      p.mesh.quaternion.setFromUnitVectors(OUT, pos.clone().normalize());
-      if (p.key !== key) {
-        const ctx = p.canvas.getContext("2d");
-        if (ctx) drawHudIcon(ctx, HUD_CANVAS, m.level, m.color, { selected: sel, fit: true });
-        p.tex.needsUpdate = true;
-        const s = worldPlaneSize(m.level) * MARKER_SCALE * (sel ? 1.15 : 1);
-        p.mesh.scale.set(s, s, 1);
-        p.key = key;
-      }
+      const key = [this.style, clampLevel(m.level), m.color, sel, m.independent, m.fervor === null ? "-" : Math.round(m.fervor * 20),
+        m.specialty, m.alert, m.war, m.fresh, m.lat.toFixed(3), m.lon.toFixed(3)].join("|");
+      const old = this.pins.get(m.id);
+      if (old && old.key === key) { old.m = m; continue; }
+      if (old) this.dispose(old, m.id);
+      const p = this.style === "pin" ? this.buildPin(m, sel) : this.buildGlyph(m, sel);
+      p.key = key;
+      for (const o of p.pickables) o.userData.id = m.id;
+      this.group.add(p.root);
+      this.pins.set(m.id, p);
     }
     this.el.dataset.markers = String(this.pins.size);
     if (!this.userMoved && this.pins.size) this.aimAtColonies();
@@ -171,7 +172,7 @@ export class GlobeView {
   /** Face the hemisphere that shows the most colonies (direction among marker sites). */
   private aimAtColonies(): void {
     this.group.updateMatrixWorld();
-    const dirs = [...this.pins.values()].map((p) => p.mesh.getWorldPosition(new THREE.Vector3()).normalize());
+    const dirs = [...this.pins.values()].map((p) => p.pickables[0]!.getWorldPosition(new THREE.Vector3()).normalize());
     let best = dirs[0]!, bestScore = -1;
     for (const d of dirs) {
       const near = dirs.filter((o) => o.dot(d) > 0.55);
@@ -186,11 +187,89 @@ export class GlobeView {
     this.controls.update();
   }
 
+  private canvasTex(size: number, draw: (ctx: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (ctx) draw(ctx);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  private buildGlyph(m: GlobeMarker, sel: boolean): Pin {
+    const tex = this.canvasTex(HUD_CANVAS, (ctx) => drawHudIcon(ctx, HUD_CANVAS, m.level, m.color, { selected: sel, fit: true }));
+    tex.premultiplyAlpha = true;
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, premultipliedAlpha: true, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false,
+    });
+    const mesh = new THREE.Mesh(this.geo, mat);
+    mesh.renderOrder = 2;
+    const pos = latLonToVector3(m.lat, m.lon, RADIUS + DECAL_OFFSET);
+    mesh.position.copy(pos);
+    mesh.quaternion.setFromUnitVectors(OUT, pos.clone().normalize());
+    const s = worldPlaneSize(m.level) * MARKER_SCALE * (sel ? 1.15 : 1);
+    mesh.scale.set(s, s, 1);
+    const root = new THREE.Group();
+    root.add(mesh);
+    return { m, root, pickables: [mesh], key: "", textures: [tex], materials: [mat], geos: [] };
+  }
+
+  private buildPin(m: GlobeMarker, sel: boolean): Pin {
+    const root = new THREE.Group();
+    const base = latLonToVector3(m.lat, m.lon, RADIUS);
+    const n = base.clone().normalize();
+    const tip = n.clone().multiplyScalar(RADIUS + stemHeight(m.level));
+    // Stem: thin cylinder (WebGL lines are 1px), with a dark sleeve for contrast on the bright Moon
+    const h = stemHeight(m.level);
+    const stemGeo = new THREE.CylinderGeometry(0.0032, 0.0032, h, 6, 1, true);
+    const sleeveGeo = new THREE.CylinderGeometry(0.0055, 0.0055, h, 6, 1, true);
+    const stemMat = new THREE.MeshBasicMaterial({ color: m.independent ? 0xffffff : new THREE.Color(m.color) });
+    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x05070d, transparent: true, opacity: 0.55, depthWrite: false });
+    const stem = new THREE.Mesh(stemGeo, stemMat);
+    const shadow = new THREE.Mesh(sleeveGeo, shadowMat);
+    for (const o of [stem, shadow]) {
+      o.position.copy(n.clone().multiplyScalar(RADIUS + h / 2));
+      o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+    }
+    shadow.renderOrder = 1; stem.renderOrder = 2;
+    const footGeo = new THREE.CircleGeometry(0.008, 12);
+    const footMat = new THREE.MeshBasicMaterial({ color: 0x05070d, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    const foot = new THREE.Mesh(footGeo, footMat);
+    foot.position.copy(n.clone().multiplyScalar(RADIUS + DECAL_OFFSET));
+    foot.quaternion.setFromUnitVectors(OUT, n);
+    const tex = this.canvasTex(PIN_HEAD_PX, (ctx) => drawPinHead(ctx, PIN_HEAD_PX, {
+      level: m.level, color: m.color, independent: m.independent, fervor: m.fervor,
+      specialty: m.specialty, selected: sel, war: m.war, fresh: m.fresh,
+    }));
+    const headMat = new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, transparent: true });
+    const head = new THREE.Sprite(headMat);
+    head.position.copy(tip);
+    const sc = PIN_SCALE * (sel ? 1.2 : 1);
+    head.scale.set(sc, sc, 1);
+    head.renderOrder = 4;
+    root.add(shadow, stem, foot, head);
+    const pin: Pin = { m, root, pickables: [head], key: "", textures: [tex], materials: [stemMat, shadowMat, footMat, headMat], geos: [stemGeo, sleeveGeo, footGeo] };
+    if (m.alert) {
+      const atex = this.canvasTex(PIN_HEAD_PX, (ctx) => drawAlertRing(ctx, PIN_HEAD_PX));
+      const amat = new THREE.SpriteMaterial({ map: atex, sizeAttenuation: false, depthWrite: false, transparent: true });
+      const ring = new THREE.Sprite(amat);
+      ring.position.copy(tip);
+      ring.scale.set(sc * 0.78, sc * 0.78, 1);
+      ring.renderOrder = 3;
+      root.add(ring);
+      pin.alert = ring;
+      pin.textures.push(atex); pin.materials.push(amat);
+    }
+    return pin;
+  }
+
   /** Turn the camera toward a marker, keeping distance. Returns false if not on this body. */
   focus(id: string): boolean {
     const p = this.pins.get(id);
     if (!p) return false;
-    const w = p.mesh.getWorldPosition(new THREE.Vector3()).normalize();
+    const w = p.pickables[0]!.getWorldPosition(new THREE.Vector3()).normalize();
     this.camera.position.copy(w.multiplyScalar(this.camera.position.length()));
     this.controls.update();
     return true;
@@ -200,7 +279,7 @@ export class GlobeView {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.camera);
-    const hits = this.ray.intersectObjects([this.sphere, ...[...this.pins.values()].map((p) => p.mesh)], false);
+    const hits = this.ray.intersectObjects([this.sphere, ...[...this.pins.values()].flatMap((p) => p.pickables)], false);
     for (const h of hits) {
       if (h.object === this.sphere) break; // marker behind the globe
       const id = h.object.userData.id as string | undefined;
@@ -241,13 +320,18 @@ export class GlobeView {
       this.camera.updateProjectionMatrix();
     }
     this.controls.update();
+    const t = performance.now() / 1000;
+    for (const p of this.pins.values()) {
+      if (p.alert) (p.alert.material as THREE.SpriteMaterial).opacity = 0.25 + 0.75 * Math.abs(Math.sin(t * 2.6));
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
   private dispose(p: Pin, id: string): void {
-    this.group.remove(p.mesh);
-    p.tex.dispose();
-    (p.mesh.material as THREE.Material).dispose();
+    this.group.remove(p.root);
+    p.textures.forEach((t) => t.dispose());
+    p.materials.forEach((m) => m.dispose());
+    p.geos.forEach((g) => g.dispose());
     this.pins.delete(id);
   }
 }

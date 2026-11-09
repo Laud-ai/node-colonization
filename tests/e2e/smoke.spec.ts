@@ -72,6 +72,22 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   await page.locator("#globeCard").screenshot({ path: path.join(smokeDir, "globe-mars.png") });
   await page.locator('[data-globe-mode="both"]').click();
 
+  // 0.13.1 pins are the default marker style; glyphs stay selectable
+  await expect(page.locator('[data-marker-style="pin"]')).toHaveClass(/selected/);
+  await page.locator('[data-globe-mode="moon"]').click();
+  const mbox = (await page.locator("#globeMoon canvas").boundingBox())!;
+  await page.mouse.move(mbox.x + mbox.width / 2, mbox.y + mbox.height / 2);
+  for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, -300); await page.waitForTimeout(80); }
+  await page.waitForTimeout(500);
+  await page.locator("#globeMoon").screenshot({ path: path.join(smokeDir, "pins-closeup.png") });
+  await page.locator('[data-marker-style="glyph"]').click();
+  await expect(page.locator('[data-marker-style="glyph"]')).toHaveClass(/selected/);
+  await page.waitForTimeout(300);
+  await page.locator("#globeMoon").screenshot({ path: path.join(smokeDir, "glyphs-closeup.png") });
+  expect(Number(await page.locator("#globeMoon").getAttribute("data-markers"))).toBeGreaterThanOrEqual(0);
+  await page.locator('[data-marker-style="pin"]').click();
+  await page.locator('[data-globe-mode="both"]').click();
+
   // Back to lobby for version picker
   await page.locator("#btnNew").click();
   await expect(page.locator("#setupScreen")).toBeVisible();

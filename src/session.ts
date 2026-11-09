@@ -88,6 +88,8 @@ export interface ColonySnap {
   foodClock: number; waterClock: number; oxygenClock: number;
   populationStress: number; hasMilitaryToken: boolean; bodyLivable: boolean;
   projectsDone: string[]; projectActive: string | null; projectProgress: number;
+  /** 0.13.1 pin alerts (UI read-only). */
+  foundedTurn: number | null; proxyAgitation: number; atWar: boolean;
 }
 export interface ExcessSnap {
   node: NodeType; claimedBy: string | null; claimedName: string | null; color: string;
@@ -247,6 +249,16 @@ function nodeSummary(c: Colony): NodeSummary {
   };
 }
 
+/** UI-only: colony named in an invasion log line this turn or last. */
+function recentInvasionMention(G: GameState, name: string): boolean {
+  for (let i = G.log.length - 1; i >= 0; i--) {
+    const e = G.log[i]!;
+    if (e.turn < G.turn - 1) break;
+    if (e.msg.startsWith("⚔") && e.msg.includes(name)) return true;
+  }
+  return false;
+}
+
 function snapColony(G: GameState, c: Colony, actingId: string | null): ColonySnap {
   return {
     id: c.id, name: c.name, patron: c.patron, body: c.body, bodyMod: c.bodyMod,
@@ -271,6 +283,9 @@ function snapColony(G: GameState, c: Colony, actingId: string | null): ColonySna
     hasMilitaryToken: hasInvasionToken(c),
     bodyLivable: (G.bodyTF[c.body] || 0) >= 10,
     projectsDone: c.projectsDone ?? [], projectActive: c.projectActive ?? null, projectProgress: c.projectProgress ?? 0,
+    foundedTurn: c.foundedTurn ?? null,
+    proxyAgitation: c.proxyAgitation || 0,
+    atWar: (c.proxyAgitation || 0) > 0 || recentInvasionMention(G, c.name),
   };
 }
 

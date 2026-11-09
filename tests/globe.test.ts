@@ -25,3 +25,16 @@ test("0.13.0 HUD glyph scheme (Sep 1 globe) is reused", () => {
   assert.deepEqual(ringFills(12), [true, false]);
   assert.equal(typeof drawHudIcon, "function");
 });
+
+test("0.13.1 pin helpers: tiers, fervor colors, halo for dark colors", async () => {
+  const { stemHeight, fervorColor, haloFor, SPECIALTY_CODE } = await import("../src/ui/pinIcon.js");
+  assert.ok(stemHeight(1) < stemHeight(5) && stemHeight(5) < stemHeight(10));
+  assert.equal(stemHeight(4), stemHeight(1));
+  assert.equal(stemHeight(9), stemHeight(5));
+  assert.equal(fervorColor(0.1), "#22c55e");
+  assert.equal(fervorColor(0.6), "#f59e0b");
+  assert.equal(fervorColor(0.9), "#ef4444");
+  assert.equal(haloFor("#1d2a33"), "#f1f5f9");
+  assert.equal(haloFor("#e8e4d8"), "#0b1020");
+  assert.equal(SPECIALTY_CODE.Water, "H₂O");
+});
