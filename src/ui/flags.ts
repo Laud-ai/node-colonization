@@ -1,3 +1,4 @@
+import { flagDesignToSvg, type FlagDesign } from "../flagDesign.js";
 /** L6 (0.11.0) — procedural flags + solar map, Solar Realist aesthetic (muted, utilitarian). */
 const PALETTE = ["#d6c7a1", "#2f3b45", "#b5523b", "#e8e4d8", "#5f7a61", "#c9a227", "#1d2a33", "#7d8b99"];
 
@@ -7,7 +8,7 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
-/** Deterministic flag from identity (culture/ideology/name) + nation color. */
+/** @deprecated 0.15.0 — legacy L6 generator kept only for old tests; use flagDesign.ts (colonyFlag/blocFlag + flagDesignToSvg). */
 export function flagSvg(key: string, nationColor: string, w = 30, h = 20): string {
   const x = hash(key);
   const a = nationColor || PALETTE[x % 8]!;
@@ -23,7 +24,7 @@ export function flagSvg(key: string, nationColor: string, w = 30, h = 20): strin
   return `<svg class="flag" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">${body}<rect width="${w}" height="${h}" fill="none" stroke="#0008"/></svg>`;
 }
 
-export interface MapColony { id: string; name: string; body: string; nationColor: string; independent: boolean; projects: string[] }
+export interface MapColony { id: string; name: string; body: string; nationColor: string; independent: boolean; projects: string[]; flag?: FlagDesign }
 
 /** Simple Earth–Moon–Mars strip with colony markers and TF bars. */
 export function solarMapSvg(cols: MapColony[], tf: Record<string, number>, selectedId: string | null): string {
@@ -47,10 +48,19 @@ export function solarMapSvg(cols: MapColony[], tf: Record<string, number>, selec
         const rr = b.r + 9 + (i % 2) * 6;
         const cx = b.x + Math.cos(ang) * rr, cy = 60 + Math.sin(ang) * rr;
         const stroke = c.id === selectedId ? "#fff" : c.independent ? "#c9a227" : "#000";
-        s += `<circle data-id="${c.id}" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${c.projects.length ? 5 : 4}" fill="${c.nationColor}" stroke="${stroke}" stroke-width="1.5"><title>${c.name}${c.independent ? " (Independent)" : ""}${c.projects.length ? " · " + c.projects.join(", ") : ""}</title></circle>`;
+        const tip = `<title>${c.name}${c.independent ? " (Independent)" : ""}${c.projects.length ? " · " + c.projects.join(", ") : ""}</title>`;
+        if (c.flag) {
+          // 0.15.0: tiny flag marker (15×10) with a selection/independence keyline
+          const fw = c.projects.length ? 18 : 15, fh = fw * 2 / 3;
+          const x = cx - fw / 2, y = cy - fh / 2;
+          s += `<g data-id="${c.id}">${tip}${flagDesignToSvg(c.flag, fw, fh).replace("<svg ", `<svg x="${x.toFixed(1)}" y="${y.toFixed(1)}" `)}`
+            + `<rect x="${(x - 1).toFixed(1)}" y="${(y - 1).toFixed(1)}" width="${fw + 2}" height="${(fh + 2).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="1.2"/></g>`;
+        } else {
+          s += `<circle data-id="${c.id}" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${c.projects.length ? 5 : 4}" fill="${c.nationColor}" stroke="${stroke}" stroke-width="1.5">${tip}</circle>`;
+        }
       });
     }
   }
-  s += `<text x="8" y="${H - 6}" fill="#7d8b99" font-size="9" font-family="monospace">TF bar → livable at 10 · gold ring = Independent · large dot = has Project</text></svg>`;
+  s += `<text x="8" y="${H - 6}" fill="#7d8b99" font-size="9" font-family="monospace">TF bar → livable at 10 · gold frame = Independent · larger flag = has Project</text></svg>`;
   return s;
 }

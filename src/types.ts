@@ -115,6 +115,11 @@ export interface Colony {
    * Importing or developing Subversion as a tool does NOT set this on the importer.
    */
   subversionMark?: boolean;
+  /**
+   * 0.15.0 flag lineage: founding Earth bloc (Independent-founded colonies inherit their
+   * liege's origin). Presentation only — never read by rules.
+   */
+  originPatron?: string;
   /** Turn this colony was founded (for min-age independence gate). */
   foundedTurn?: number;
   /** Lend attempts this turn (max 1 — 0.8.0). */

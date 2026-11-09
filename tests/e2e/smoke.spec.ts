@@ -126,6 +126,9 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
     + Number(await page.locator("#globeMars").getAttribute("data-routes"))).toBeGreaterThan(0);
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(smokeDir, "routes-late-game.png") });
+  // 0.15.0: vexillological flags on colony cards and the map strip
+  expect(await page.locator("#colonies svg.flag").count()).toBeGreaterThan(0);
+  if (await page.locator("#solarMapCard").isVisible()) expect(await page.locator("#solarMap svg.flag").count()).toBeGreaterThan(0);
 
   // Back to lobby for version picker
   await page.locator("#btnNew").click();
@@ -161,6 +164,15 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   await prev.click();
   await expect(overlay).toBeVisible();
   await expect(frame.locator("#setupScreen")).toBeVisible({ timeout: 15_000 });
+
+  // 0.15.0 dev flag gallery (?flags) — ~50 samples + independence before/after
+  await page.goto("?flags");
+  await expect(page.locator("#flagGallery")).toBeVisible();
+  expect(await page.locator("#flagGallery .fg-tile").count()).toBeGreaterThanOrEqual(40);
+  const fgH = await page.locator("#flagGallery").evaluate((el) => el.scrollHeight);
+  await page.setViewportSize({ width: 1400, height: Math.min(4000, fgH) });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: path.join(smokeDir, "flags-gallery.png") });
 
   expect(pageErrors, `page errors: ${pageErrors.join(" | ")}`).toEqual([]);
   expect(consoleErrors, `console errors: ${consoleErrors.join(" | ")}`).toEqual([]);

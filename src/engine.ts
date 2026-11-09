@@ -273,6 +273,9 @@ export function makeColony(G: GameState, cfg: {
       rng: cfg.rng,
     }),
     patron: cfg.patron,
+    originPatron: cfg.patron === "Independent" && cfg.liegeId
+      ? (G.colonies.find((x) => x.id === cfg.liegeId)?.originPatron ?? cfg.patron)
+      : cfg.patron,
     liegeId: cfg.liegeId ?? null,
     fervor: 0,
     foundedTurn: G.turn || 1,

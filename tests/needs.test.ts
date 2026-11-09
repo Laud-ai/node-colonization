@@ -1,3 +1,4 @@
+import { blocFlag } from "../src/flagDesign.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createGame, runTurns } from "../src/engine.js";
@@ -56,7 +57,7 @@ test("0.14.0 needs tree states + suppliers are read-only and sorted", () => {
 
 test("0.14.0 supplier sort: Requires → feasible → needs → own/ally → neutral → rival", () => {
   const mk = (p: Partial<Supplier>): Supplier => ({
-    node: "Water", kind: "colony", id: "x", name: "X", location: "Moon", color: "#fff", flagKey: "x",
+    node: "Water", kind: "colony", id: "x", name: "X", location: "Moon", color: "#fff", flagKey: "x", flag: blocFlag("United Nations"),
     relation: "neutral", legal: true, blocks: [], scope: "regional", line: "", replaces: "", allyHint: "",
     needRank: 1, engineRank: 0, moveKey: null, moveLabel: null, ...p,
   });

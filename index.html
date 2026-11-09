@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Node Colonization — 0.14.1</title>
+    <title>Node Colonization — 0.15.0</title>
     <link rel="stylesheet" href="/src/ui/style.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
     <div id="setupScreen" class="setup-screen">
       <div class="setup-card">
         <div class="setup-brand">
-          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.14.1</span></h1>
+          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.15.0</span></h1>
           <p class="setup-blurb">
             Pre-simulation lobby for <b>fervor</b> and <b>solar-bloc / diplomacy</b> experiments.
             Pick presets on each tab, confirm the threshold, then begin. Defaults:
@@ -54,7 +54,7 @@
 
         <div id="setupTabRules" class="setup-tab-panel" data-panel="rules" hidden>
           <div class="setup-section">
-            <p class="setup-blurb">Rule flags for the live build. <button type="button" id="rulesDefault">Shipped defaults</button> <button type="button" id="rulesLegacy">Legacy (pre-0.9.4)</button></p>
+            <p class="setup-blurb">Rule flags for the live build. <button type="button" id="rulesDefault">Shipped defaults</button> <button type="button" id="rulesLegacy">Legacy (pre-0.9.4)</button> <button type="button" id="flagGalleryBtn">Flag gallery</button></p>
             <div id="rulesForm" class="rules-form"></div>
             <p class="tags credits">Credits — Moon globe texture: NASA Scientific Visualization Studio CGI Moon Kit (svs.gsfc.nasa.gov/4720), LRO LROC WAC color mosaic (NASA/GSFC/Arizona State Univ.), public domain. Mars globe texture: Viking MDIM 2.1 colorized global mosaic (NASA/JPL/USGS Astrogeology, via Wikimedia Commons), public domain.</p>
           </div>
@@ -84,7 +84,7 @@
     <div id="playScreen" class="play-screen map-first" hidden>
       <header class="topbar">
         <div class="brand">
-          <h1>NODE COLONIZATION <span class="badge">0.14.1 / ROUTES</span></h1>
+          <h1>NODE COLONIZATION <span class="badge">0.15.0 / FLAGS</span></h1>
           <div class="meta">Turn <b id="turn">1</b> · Acting: <b id="acting">—</b> · Phase: <b id="phase">Colony</b></div>
         </div>
         <div class="toolbar">
@@ -211,5 +211,6 @@
     </div>
     <iframe id="snapshotFrame" style="flex:1;border:0;width:100%" title="Version snapshot"></iframe>
   </div>
+  <div id="flagGallery" class="fg-overlay" hidden><button type="button" id="flagGalleryClose" class="fg-close">Close ✕</button><div id="flagGalleryBody"></div></div>
 </body>
 </html>

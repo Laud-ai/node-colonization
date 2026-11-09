@@ -1,4 +1,6 @@
-import { flagSvg, solarMapSvg } from "./flags.js";
+import { solarMapSvg } from "./flags.js";
+import { flagDesignToSvg } from "../flagDesign.js";
+import { flagGalleryHtml } from "./flagGallery.js";
 import { SiteBook } from "./colonySites.js";
 import type { GlobeMarker, GlobeRoute, GlobeView, MarkerStyle } from "./globe.js";
 import { NODE_COLORS } from "../nodes.js";
@@ -256,7 +258,7 @@ function renderSolarMap(snap: UiSnapshot): void {
   card.hidden = !l6On();
   if (card.hidden) return;
   $("solarMap").innerHTML = solarMapSvg(
-    snap.colonies.map((c) => ({ id: c.id, name: c.name, body: c.body, nationColor: c.nationColor || "#64748b", independent: c.independent, projects: c.projectsDone })),
+    snap.colonies.map((c) => ({ id: c.id, name: c.name, body: c.body, nationColor: c.nationColor || "#64748b", independent: c.independent, projects: c.projectsDone, flag: c.flag })),
     snap.bodyTF as Record<string, number>, snap.selectedId);
 }
 // --- 0.13.0 Moon / Mars globes (render reads the UI snapshot only) ---
@@ -362,13 +364,13 @@ function renderGlobes(snap: UiSnapshot): void {
     }
     rt[r.toBody].push({
       id: r.id, kind: "outer", color, a: to, inbound: true, twoWay: !!r.counterNode, otherBody: String(r.fromBody),
-      flagSvg: flagSvg(r.fromFlagKey, r.fromColor, 30, 20), label: `${r.fromName} · ${r.node}${counter}`, fanIndex: nextFan(r.toId),
+      flagSvg: flagDesignToSvg(r.fromFlag, 30, 20), label: `${r.fromName} · ${r.node}${counter}`, fanIndex: nextFan(r.toId),
     });
     if (r.fromKind === "colony" && r.fromBody !== "Earth") {
       const from = placed.get(r.fromId);
       if (from) rt[r.fromBody as "Moon" | "Mars"].push({
         id: r.id + ":out", kind: "outer", color, a: from, inbound: false, twoWay: !!r.counterNode, otherBody: r.toBody,
-        flagSvg: flagSvg(r.toFlagKey, r.toColor, 30, 20), label: `${r.toName} · ${r.node}${counter}`, fanIndex: nextFan(r.fromId),
+        flagSvg: flagDesignToSvg(r.toFlag, 30, 20), label: `${r.toName} · ${r.node}${counter}`, fanIndex: nextFan(r.fromId),
       });
     }
   }
@@ -440,7 +442,7 @@ function renderColonies(snap: UiSnapshot): void {
     const clockLine = clockBits.length ? `<div class="tags need">${clockBits.map(esc).join(" · ")}</div>` : "";
     const nc = c.nationColor || "#64748b";
     return `<div class="${classes}" data-id="${c.id}" style="border-left:4px solid ${esc(nc)}">
-      <div class="name">${l6On() ? flagSvg(c.name + "|" + c.culture.join("/") + "|" + (c.ideology[0] || ""), nc, 21, 14) + " " : `<span class="dot" style="background:${esc(nc)};display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px"></span>`}${esc(c.name)} <span class="rp">L${c.level}</span> <span class="rp">RP ${c.rp}</span></div>
+      <div class="name">${l6On() ? flagDesignToSvg(c.flag, 21, 14, c.name) + " " : `<span class="dot" style="background:${esc(nc)};display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px"></span>`}${esc(c.name)} <span class="rp">L${c.level}</span> <span class="rp">RP ${c.rp}</span></div>
       <div class="tags">${c.body} · ${esc(c.patron)} · Nation RP ${c.nationRp} · ${c.specialty} · ${c.acted ? "acted" : "waiting"}</div>
       <div class="tags need">Requires ${c.requires} · lines ${c.logiAvail}/${c.logiCap} (occ ${c.occupied}) · strain ${c.strain}</div>
       ${fervorLine}
@@ -745,3 +747,17 @@ initWindows(() => { if (uiPhase === "playing" && session) render(); });
 // Boot into setup lobby (do not auto-start a game).
 showPhase("setup");
 renderSetup();
+
+// --- 0.15.0 dev flag gallery (?flags or Rules tab → Flag gallery) ---
+function openFlagGallery(): void {
+  const el = document.getElementById("flagGallery");
+  if (!el) return;
+  $("flagGalleryBody").innerHTML = flagGalleryHtml();
+  el.hidden = false;
+}
+document.getElementById("flagGalleryBtn")?.addEventListener("click", openFlagGallery);
+document.getElementById("flagGalleryClose")?.addEventListener("click", () => {
+  const el = document.getElementById("flagGallery");
+  if (el) el.hidden = true;
+});
+if (new URLSearchParams(location.search).has("flags")) openFlagGallery();

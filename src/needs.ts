@@ -12,6 +12,8 @@ import {
 } from "./engine.js";
 import { lineCanServeTrade } from "./trade.js";
 import { nationColorForColony, nationColorForEarth, sameNation } from "./nation.js";
+import type { FlagDesign } from "./flagDesign.js";
+import { flagForColony, flagForEarth } from "./flagLineage.js";
 
 export type NeedState = "have" | "missing" | "expand" | "none";
 
@@ -92,6 +94,8 @@ export interface Supplier {
   color: string;
   /** Flag key for flagSvg (same identity key as colony cards). */
   flagKey: string;
+  /** 0.15.0 flag design. */
+  flag: FlagDesign;
   relation: Relation;
   /** Legal now under engine trade rules (findSources). */
   legal: boolean;
@@ -230,6 +234,7 @@ export function listSuppliers(G: GameState, actor: Colony, node: NodeType | null
         location,
         color: s.kind === "earth" ? (s.bloc.nationColor || nationColorForEarth(s.bloc.name)) : nationColorForColony(s.colony),
         flagKey: s.kind === "earth" ? s.bloc.name : `${s.colony.name}|${s.colony.culture.join("/")}|${s.colony.ideology[0] || ""}`,
+        flag: s.kind === "earth" ? flagForEarth(s.bloc.name) : flagForColony(G, s.colony),
         relation, legal, blocks, scope, line, replaces, allyHint, needRank,
         engineRank: rankTradeSource(G, actor, s),
         moveKey: m ? moveKey(m) : null,

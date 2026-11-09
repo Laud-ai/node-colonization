@@ -2,7 +2,7 @@
 import type { Supplier, TreeNode } from "../session.js";
 import { NODE_COLORS } from "../nodes.js";
 import type { NodeType } from "../types.js";
-import { flagSvg } from "./flags.js";
+import { flagDesignToSvg } from "../flagDesign.js";
 import { SPECIALTY_CODE, luminance } from "./pinIcon.js";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -75,7 +75,7 @@ export function suppliersHtml(
     const relLabel = s.relation === "own" ? "own bloc" : s.relation;
     return `<div class="sup-card${ok ? "" : " blocked"}" data-sup-id="${esc(s.id)}" data-sup-node-card="${s.node}">
       <div class="sup-title"><span>${esc(s.name)}</span><span class="sup-loc ${s.location}">${s.location}</span></div>
-      <div class="sup-flag">${flagSvg(s.flagKey, s.color, 48, 32)}${resourceBadge(s.node)}</div>
+      <div class="sup-flag">${flagDesignToSvg(s.flag, 48, 32, s.name)}${resourceBadge(s.node)}</div>
       <div><b>${esc(s.node)}</b> · <span class="sup-rel ${s.relation}">${relLabel}</span> · ${s.scope === "regional" ? "regional" : "outer (space)"}</div>
       <div>Line: ${esc(s.line)}</div>
       <div>Effect: ${esc(s.replaces)}</div>

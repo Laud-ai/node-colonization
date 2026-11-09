@@ -1,6 +1,6 @@
 # AGENTS.md — Node Colonization
 
-Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.14.1** (L7 + map-first globes, pins, needs tree, suppliers, trade routes).
+Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.15.0** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags).
 
 **Live (GitHub Pages):** https://laud-ai.github.io/node-colonization/  
 **Repo:** https://github.com/Laud-ai/node-colonization
@@ -53,7 +53,11 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 | `src/ui/hudIcon.ts` | Level glyphs from the Sep 1 Moon Globe (L1 dot, L2–4 3-wedge, L5–9 6-wedge, L10+ rings) |
 | `src/ui/colonySites.ts` | Pure deterministic colony lat/lon (hash of seed + id, ≥10° spacing, stable across turns) |
 | `src/ui/textures/` | `moon.jpg` (NASA SVS CGI Moon Kit, LROC WAC), `mars.jpg` (Viking MDIM 2.1 colorized, NASA/JPL/USGS); imported via `?url` so they bundle into live + snapshot builds |
-| `src/ui/flags.ts` | Procedural flags + old solar map strip (kept under the globes) |
+| `src/flagDesign.ts` | 0.15.0 flag grammar (pure, deterministic): tinctures, NAVA rules + rule of tincture, 14 bloc traditions, ideology families, specialty charges, colonial/flip/independent eras → `flagDesignToSvg`. Grammar: `docs/flags.md` |
+| `src/flagLineage.ts` | Builds `FlagInput` from game state (`Colony.originPatron` lineage, liege) — `flagForColony`, `flagForEarth`; snapshots carry `ColonySnap.flag`, `Supplier.flag`, `RouteSnap.fromFlag/toFlag` |
+| `src/ui/flagGallery.ts` | Dev gallery (`?flags` or Rules tab → Flag gallery): synthetic samples only |
+| `src/ui/flags.ts` | Solar map strip (0.15.0: tiny flags as colony markers); legacy `flagSvg` deprecated (old test only) |
+| `out/reports/visual-overhaul-assets.md` | 0.15.0 visual-overhaul asset list (designer tokens, P1–P3, source code/NASA/rfab; no reskin applied yet) |
 | `scripts/snapshot.mjs` | Frozen version builds |
 | `tests/*.test.ts` | Node test suite (`npm test`) |
 | `.github/workflows/pages.yml` | CI test + build + GitHub Pages deploy |
@@ -68,7 +72,7 @@ npm run build
 npm run smoke
 ```
 
-`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → pins default + glyph toggle → needs tree → supplier menu → minimize/restore a window → routes layer + toggle → 60 more turns (late game) → version iframes 0.9.0 and 0.12.0). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`, `pins-closeup.png`, `glyphs-closeup.png`, `needs-tree.png`, `suppliers.png`, `map-first.png`, `routes-late-game.png`.
+`smoke` builds (Pages base), serves via Vite preview under `/node-colonization/`, and click-throughs the lobby (tabs → begin → end turn → globes load + markers after 18 simulated turns → pins default + glyph toggle → needs tree → supplier menu → minimize/restore a window → routes layer + toggle → 60 more turns (late game) → flags on cards + map strip → version iframes 0.9.0 and 0.12.0 → `?flags` gallery). Screenshots: `out/smoke/smoke.png`, `globes.png`, `globe-moon.png`, `globe-mars.png`, `pins-closeup.png`, `glyphs-closeup.png`, `needs-tree.png`, `suppliers.png`, `map-first.png`, `routes-late-game.png`, `flags-gallery.png`.
 
 ## Release steps
 
@@ -83,3 +87,7 @@ npm run smoke
 ## Git
 
 Remote: `Laud-ai/node-colonization` (public). Default branch **main**. Tags mark frozen points (`v0.12.0` = baseline L7, `v0.13.0` = globes, `v0.13.1` = pins, `v0.14.0` = needs tree / suppliers / map-first, `v0.14.1` = trade routes). Prefer small commits after each playable change.
+
+## Flags (0.15.0)
+
+Every flag in the UI comes from `src/flagDesign.ts` via `flagDesignToSvg` — never hand-draw or hardcode a flag. Rules (tested): deterministic; ≤3 tinctures (4th only with a named `justification`); charges metal/colour with contrast ≥3; adjacent fields contrast ≥1.4; daughters of different blocs never collide. Real tradition colours beat the muted UI palette. See `docs/flags.md`.

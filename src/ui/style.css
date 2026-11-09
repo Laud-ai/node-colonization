@@ -823,3 +823,19 @@ th {
 .sup-rel.own, .sup-rel.ally { color: #86efac; } .sup-rel.rival { color: #fca5a5; } .sup-rel.neutral { color: #cbd5e1; }
 .sup-block { color: #fca5a5; }
 .sup-card button { margin-top: 3px; font-size: 11px; }
+
+/* 0.15.0 flag gallery (designer tokens) */
+.fg-overlay { position: fixed; inset: 0; z-index: 1000; overflow: auto; background: #0B0F14; color: #E6EDF3; padding: 16px 24px; font-family: system-ui, sans-serif; }
+.fg-overlay[hidden] { display: none; }
+.fg-close { position: fixed; top: 12px; right: 16px; z-index: 1001; }
+.fg h2 { margin: 0 0 4px; font-size: 18px; border-bottom: 2px solid #F2A541; display: inline-block; padding-bottom: 2px; }
+.fg h3 { margin: 16px 0 8px; font-size: 13px; color: #7D8B99; text-transform: uppercase; letter-spacing: .04em; }
+.fg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.fg-tile { margin: 0; background: #111822; border: 1px solid #2A3A4D; padding: 8px; position: relative; }
+.fg-flag svg { display: block; }
+.fg-small { position: absolute; top: 8px; right: 8px; }
+.fg-tile figcaption { font-size: 11px; margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.fg-tile figcaption span { color: #7D8B99; }
+.fg-pair { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.fg-pair .fg-tile { width: 180px; }
+.fg-arrow { color: #F2A541; font-size: 22px; }

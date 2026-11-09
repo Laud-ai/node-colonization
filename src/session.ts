@@ -1,4 +1,6 @@
 import { applyRules, type Rules } from "./rules.js";
+import type { FlagDesign } from "./flagDesign.js";
+import { flagForColony, flagForEarth } from "./flagLineage.js";
 import { needsTree, listSuppliers, type TreeNode, type Supplier } from "./needs.js";
 import { mulberry32, type Rng } from "./rng.js";
 import {
@@ -80,6 +82,8 @@ export interface NodeSummary {
 }
 export type { TreeNode, Supplier };
 export interface ColonySnap {
+  /** 0.15.0 flag design (lineage/function/ideology). */
+  flag: FlagDesign;
   id: string; name: string; patron: string; body: Body; bodyMod: number;
   specialty: NodeType; requires: NodeType; culture: string[]; ideology: string[];
   ideologyImported: string[]; ideologyDevelopCount: number;
@@ -117,6 +121,8 @@ export interface RouteSnap {
   id: string; node: NodeType; toId: string; toName: string; toBody: Body;
   fromKind: "earth" | "colony"; fromId: string; fromName: string; fromBody: "Earth" | Body;
   fromColor: string; fromFlagKey: string; toColor: string; toFlagKey: string;
+  /** 0.15.0 vexillological flag designs (render with flagDesignToSvg). */
+  fromFlag: FlagDesign; toFlag: FlagDesign;
   /** Consented bilateral counter (partner receives counterNode too). */
   counterNode: NodeType | null;
 }
@@ -289,6 +295,7 @@ function snapRoutes(G: GameState): RouteSnap[] {
         fromColor: src ? nationColorForColony(src) : (bloc?.nationColor || nationColorForEarth(bloc?.name ?? r.sourceName)),
         fromFlagKey: src ? colonyFlagKey(src) : (bloc?.name ?? r.sourceName),
         toColor: nationColorForColony(c), toFlagKey: colonyFlagKey(c),
+        fromFlag: src ? flagForColony(G, src) : flagForEarth(bloc?.name ?? r.sourceName), toFlag: flagForColony(G, c),
         counterNode: r.counterConsent && r.counterNode ? r.counterNode : null,
       });
     }
@@ -298,7 +305,7 @@ function snapRoutes(G: GameState): RouteSnap[] {
 
 function snapColony(G: GameState, c: Colony, actingId: string | null): ColonySnap {
   return {
-    id: c.id, name: c.name, patron: c.patron, body: c.body, bodyMod: c.bodyMod,
+    id: c.id, name: c.name, patron: c.patron, body: c.body, bodyMod: c.bodyMod, flag: flagForColony(G, c),
     specialty: c.specialty, requires: c.requires, culture: c.culture.slice(),
     ideology: c.ideology.slice(), ideologyImported: c.ideologyImported.slice(),
     ideologyDevelopCount: c.ideologyDevelopCount,
