@@ -1,6 +1,6 @@
 {
   "name": "node-colonization-l0",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "private": true,
   "type": "module",
   "description": "Node Colonization — L0–L7 + 3D Moon/Mars globes (0.13.0); rules/version lobby",
@@ -14,6 +14,7 @@
     "sim:solar": "tsx src/solarBlocSweep.ts",
     "sim:growth": "tsx src/growthProbe.ts",
     "sim:clocks": "tsx src/clockProbe.ts",
+    "sim:passes": "tsx src/passProbe.ts",
     "snapshot": "node scripts/snapshot.mjs",
     "smoke": "npm run build && playwright test"
   },

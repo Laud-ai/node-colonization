@@ -1,4 +1,5 @@
 import { tickGeopolitics } from "./l7.js";
+import { ruleNum, ruleOn } from "./rules.js";
 import { tickProjects } from "./l5.js";
 import { chance, mulberry32, pick, type Rng } from "./rng.js";
 import {
@@ -353,17 +354,153 @@ export function needScore(c: Colony): number {
   return s;
 }
 
-/** Act highest-need cities first (nation spine), then RP, then name. */
+/**
+ * Turn order. 0.17.1 rule `aiTurnOrderRp` (Tiago): highest RP first, then hungrier, then name.
+ * Off / no rules: highest-need cities first (nation spine), then RP, then name.
+ */
 export function sortedColonies(G: GameState): Colony[] {
+  const byRp = !!G.rules && ruleOn(G, "aiTurnOrderRp");
   return [...G.colonies].sort(
-    (a, b) =>
-      needScore(b) - needScore(a) ||
-      rp(b, G.bodyTF) - rp(a, G.bodyTF) ||
-      a.name.localeCompare(b.name)
+    (a, b) => byRp
+      ? rp(b, G.bodyTF) - rp(a, G.bodyTF) || needScore(b) - needScore(a) || a.name.localeCompare(b.name)
+      : needScore(b) - needScore(a) || rp(b, G.bodyTF) - rp(a, G.bodyTF) || a.name.localeCompare(b.name)
   );
 }
 
+// ── 0.17.1 AI (Tiago): spread develops to smaller friends; work Earth instead of passing ─────────
+
+/** Same nation, or same (non-Neutral) Earth alliance. */
+export function friendlyColonies(G: GameState, a: Colony, b: Colony): boolean {
+  if (sameNation(a, b)) return true;
+  const x = patronAllianceOf(G, a);
+  return !!x && x !== "Neutral" && x === patronAllianceOf(G, b);
+}
+
+/**
+ * Sources of `node` the actor should leave to smaller friends (aiSpreadDevelop): for each friendly colony
+ * ≥ gap levels below the actor that has not acted, needs `node` as Requires and can take a source with
+ * its own free line, reserve its best such source.
+ */
+export function reservedForSmallerFriends(G: GameState, actor: Colony, node: NodeType): Set<string> {
+  const out = new Set<string>();
+  const maxLvl = colonyLevel(actor) - ruleNum(G, "aiSpreadGap");
+  const smalls = G.colonies
+    .filter((o) => o.id !== actor.id && !o.acted && o.requires === node && colonyLevel(o) <= maxLvl && friendlyColonies(G, actor, o))
+    .sort((a, b) => colonyLevel(a) - colonyLevel(b) || a.name.localeCompare(b.name));
+  for (const o of smalls) {
+    const free = freeLines(o);
+    const usable = findSources(G, o, node).filter((s) =>
+      !(s.kind === "colony" && s.colony.id === actor.id)
+      && free.some((l) => lineCanServeTrade(l, o, s)) && !out.has(tradeSourceKey(s)));
+    const best = pickBestSource(G, o, usable);
+    if (best) out.add(tradeSourceKey(best));
+  }
+  return out;
+}
+
+/** Feed a friendly colony's Requires from the actor's own surplus (develops it). Lowest level first. */
+export function tryFeedFriendRequires(G: GameState, actor: Colony, rng: Rng, maxLevel: number): boolean {
+  type Cand = { o: Colony; lineId: string };
+  const cands: Cand[] = [];
+  for (const o of G.colonies) {
+    if (o.id === actor.id || colonyLevel(o) > maxLevel || !friendlyColonies(G, actor, o)) continue;
+    const node = o.requires;
+    if (node === "Logistics" || extras(actor, node) < 1) continue;
+    if (!pickExportLine(actor, o)) continue;
+    const src = { kind: "colony" as const, colony: actor, node };
+    const line = freeLines(o).find((l) => lineCanServeTrade(l, o, src));
+    if (line) cands.push({ o, lineId: line.id });
+  }
+  cands.sort((a, b) => colonyLevel(a.o) - colonyLevel(b.o) || a.o.name.localeCompare(b.o.name));
+  for (const c of cands) {
+    const node = c.o.requires;
+    if (grantColonyImport(G, c.o, c.lineId, actor, node, rng)) {
+      pushLog(G, `${actor.name} sends ${node} to ${c.o.name} so it can develop (L${colonyLevel(c.o) - 1}).`, true);
+      afterColonyAction(G, actor, rng);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * aiSpreadDevelop: recall a line this colony lent to a colony ≥ gap levels bigger when the borrower uses it
+ * for a non-vital route (or not at all) and the line could carry one of `reqSources` (our own develop).
+ * Not an action by itself — the caller then develops on the returned line.
+ */
+export function tryRecallLentLine(G: GameState, actor: Colony, rng: Rng): boolean {
+  if (actor.requires === "Logistics") return false;
+  // Raw Requires sources that would be legal if we had our line back (findSources needs a usable line)
+  const reqSources = findSourcesRaw(G, actor, actor.requires).filter((s) => s.kind === "earth"
+    ? earthTradeAllowed(G, actor, s.bloc, s.node, CULTURES, IDEOLOGIES, socialAffinity, consentsExport)
+    : !!pickExportLine(s.colony, actor) && !(s.node === "Subversion" && !shouldAcceptEnemySubversion(G, actor, s)));
+  if (!reqSources.length || freeLines(actor).some((l) => reqSources.some((s) => lineCanServeTrade(l, actor, s)))) return false;
+  const gap = ruleNum(G, "aiSpreadGap");
+  for (const own of actor.logisticsLines) {
+    if (!own.lentTo) continue;
+    const b = G.colonies.find((c) => c.id === own.lentTo);
+    if (!b || colonyLevel(b) < colonyLevel(actor) + gap) continue;
+    const borrowed = b.logisticsLines.find((l) => l.kind === "borrowed" && l.borrowedFrom?.colonyId === actor.id && l.borrowedFrom.lineId === own.id);
+    if (!borrowed) continue;
+    if (borrowed.route && (borrowed.route.vital || isVitalNeed(b, borrowed.route.node))) continue;
+    if (borrowed.exportRoute != null) continue;
+    if (!reqSources.some((s) => lineCanServeTrade({ ...own, lentTo: null }, actor, s))) continue;
+    if (borrowed.route) clearRouteOnLine(G, b, borrowed, rng, true);
+    if (returnLentLine(G, b, borrowed.id)) {
+      pushLog(G, `${actor.name} takes back its logistics line from ${b.name} to develop.`, true);
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Import Logistics from Earth (or a same-nation colony) for a new line — more capacity, and the Earth claim helps fill the bloc. */
+export function tryImportLogisticsForCapacity(G: GameState, actor: Colony, rng: Rng): boolean {
+  const sources = findSources(G, actor, "Logistics").filter((s) => s.kind === "earth" || sameNation(actor, s.colony));
+  const best = pickBestSource(G, actor, sources);
+  return best ? importLogistics(G, actor, best, rng) : false;
+}
+
+/**
+ * Cooperative Earth unlock: move a non-vital colony-sourced (or unfriendly-Earth) route onto an unclaimed
+ * slot of a friendly Earth bloc (own sovereign, allied or Neutral; rank ≤ −16), the bloc closest to
+ * filling first — a full bloc develops a new excess slot.
+ */
+export function tryCoopEarthUnlock(G: GameState, actor: Colony, rng: Rng): boolean {
+  const friendlyEarth = (s: TradeSource) => s.kind === "earth" && rankSource(G, actor, s) <= -16;
+  const lines = occupiedLines(actor).filter((l) => {
+    const r = l.route!;
+    if (l.kind === "borrowed" || r.vital || r.earthCycle || r.node === actor.requires || isVitalNeed(actor, r.node)) return false;
+    if (r.sourceKind === "earth") {
+      const b = blocByName(G, r.sourceId) ?? G.blocs.find((x) => x.name === r.sourceName);
+      if (b && friendlyEarth({ kind: "earth", bloc: b, node: r.node, slotIndex: -1 })) return false;
+    }
+    return true;
+  });
+  if (!lines.length) return false;
+  const blocs = [...G.blocs]
+    .map((b) => ({ b, open: b.excess.filter((x) => x.claimedBy === null).length }))
+    .filter((x) => x.open > 0)
+    .sort((a, b) => a.open - b.open || a.b.name.localeCompare(b.b.name));
+  for (const { b } of blocs) {
+    for (let i = 0; i < b.excess.length; i++) {
+      const slot = b.excess[i]!;
+      if (slot.claimedBy !== null || slot.node === "Logistics") continue;
+      const src: TradeSource = { kind: "earth", bloc: b, node: slot.node, slotIndex: i };
+      if (!friendlyEarth(src)) continue;
+      if (!earthTradeAllowed(G, actor, b, slot.node, CULTURES, IDEOLOGIES, socialAffinity, consentsExport)) continue;
+      const line = lines.find((l) => lineCanServeTrade(l, actor, src) && l.route!.node !== slot.node);
+      if (!line) continue;
+      pushLog(G, `${actor.name} joins ${b.name}'s Earth push (${slot.node}) to unlock a new excess.`, true);
+      return switchRoute(G, actor, line.id, src, rng);
+    }
+  }
+  return false;
+}
+
 export function develop(G: GameState, c: Colony, rng: Rng): void {
+  (G as unknown as { __devTrace?: { turn: number; id: string; level: number; patron: string }[] }).__devTrace
+    ?.push({ turn: G.turn, id: c.id, level: colonyLevel(c), patron: c.patron });
   const got = pick(rng, NODES.filter((n) => n !== c.specialty));
   c.developed[got] += 1;
   if (got === "Logistics") {
@@ -696,10 +833,11 @@ export function lendableLines(c: Colony): LogisticsLine[] {
 export type LenderPick = { colony: Colony; line: LogisticsLine; affinity: number };
 
 /** Pick highest-affinity assisting colony with a free lendable line. */
-export function pickBestLender(G: GameState, borrower: Colony, forSource?: TradeSource): LenderPick | null {
+export function pickBestLender(G: GameState, borrower: Colony, forSource?: TradeSource, minLenderLevel = 0): LenderPick | null {
   const cands: LenderPick[] = [];
   for (const c of G.colonies) {
     if (c.id === borrower.id) continue;
+    if (minLenderLevel > 0 && colonyLevel(c) < minLenderLevel) continue;
     if (!assistsColony(G, c, borrower) && !sameNation(c, borrower)) continue;
     const lines = lendableLines(c);
     if (!lines.length) continue;
@@ -1140,8 +1278,19 @@ export function tryFeedHungrySibling(G: GameState, actor: Colony, rng: Rng): boo
 
 export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
   if (actor.acted) return;
+  (G as unknown as { __actTrace?: { turn: number; id: string; rp: number; level: number }[] }).__actTrace
+    ?.push({ turn: G.turn, id: actor.id, rp: rp(actor, G.bodyTF), level: colonyLevel(actor) });
   // 0.8.2: cancel prior-turn earthCycle probes so Earth excess rerolls
   cancelEarthCycleRoutes(G, actor, rng);
+  const spread = !!G.rules && ruleOn(G, "aiSpreadDevelop");
+  const active = !!G.rules && ruleOn(G, "aiActiveEarth");
+  /** Requires sources minus those left to smaller friends (aiSpreadDevelop). */
+  const sourcesFor = (node: NodeType): TradeSource[] => {
+    const all = findSources(G, actor, node);
+    if (!spread || node !== actor.requires || node === "Logistics") return all;
+    const reserved = reservedForSmallerFriends(G, actor, node);
+    return reserved.size ? all.filter((s) => !reserved.has(tradeSourceKey(s))) : all;
+  };
   const tryStart = (node: NodeType): boolean => {
     if (node === "Logistics") {
       let sources = findSources(G, actor, "Logistics");
@@ -1152,7 +1301,7 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
       const best = pickBestSource(G, actor, sources);
       return best ? importLogistics(G, actor, best, rng) : false;
     }
-    const best = pickBestSource(G, actor, findSources(G, actor, node));
+    const best = pickBestSource(G, actor, sourcesFor(node));
     if (!best) return false;
     const free = freeLines(actor).filter((l) => lineCanServeTrade(l, actor, best));
     const ownFree = free.filter((l) => l.kind !== "borrowed");
@@ -1160,13 +1309,14 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
     if (free.length) return startRoute(G, actor, free[0]!.id, best, rng);
     // No free lines: one reach-aware lend attempt max
     if ((actor.lendAttemptsThisTurn || 0) >= 1) return false;
-    const lender = pickBestLender(G, actor, best);
+    // 0.17.1 spread: never borrow from a colony ≥ gap levels smaller (it needs the line to develop)
+    const lender = pickBestLender(G, actor, best, spread ? colonyLevel(actor) - ruleNum(G, "aiSpreadGap") + 1 : 0);
     if (!lender) return false;
     return startRouteWithLend(G, actor, lender.colony.id, lender.line.id, best, rng);
   };
   const trySwitch = (node: NodeType): boolean => {
     if (node === "Logistics") return false;
-    const best = pickBestSource(G, actor, findSources(G, actor, node));
+    const best = pickBestSource(G, actor, sourcesFor(node));
     if (!best) return false;
     const candidates = occupiedLines(actor).filter(
       (l) => l.route && l.route.node !== actor.requires && lineCanServeTrade(l, actor, best)
@@ -1203,6 +1353,10 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
       if (best && importLogistics(G, actor, best, rng)) return;
     }
   }
+  // 0a) 0.17.1 spread: take back a line lent to a much bigger colony (non-vital use) if it lets us develop
+  if (spread) tryRecallLentLine(G, actor, rng);
+  // 0b) 0.17.1 spread: a much bigger colony first helps a smaller friend develop from its own surplus
+  if (spread && tryFeedFriendRequires(G, actor, rng, colonyLevel(actor) - ruleNum(G, "aiSpreadGap"))) return;
   // 1) Fill Requires / missing basals / strained deps — never pass if sourcable
   for (const n of needNodes()) {
     if (tryStart(n)) return;
@@ -1247,7 +1401,7 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
   }
   // Final Needs re-check before pass (never pass if Requires / basals sourcable)
   for (const n of needNodes()) {
-    if (findSources(G, actor, n).length) {
+    if (sourcesFor(n).length) {
       if (tryStart(n)) return;
       if (trySwitch(n)) return;
     }
@@ -1261,8 +1415,82 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
     afterColonyAction(G, actor, rng);
     return;
   }
+  // 0.17.1 aiActiveEarth: work Earth / help allies before passing
+  if (active) {
+    if (tryImportLogisticsForCapacity(G, actor, rng)) return;
+    if (tryCoopEarthUnlock(G, actor, rng)) return;
+    if (tryFeedFriendRequires(G, actor, rng, Number.POSITIVE_INFINITY)) return;
+  }
+  const ptrace = (G as unknown as { __passTrace?: PassDiag[] }).__passTrace;
+  if (ptrace) ptrace.push(diagnosePass(G, actor));
   pushLog(G, `${actor.name} passes.`);
   afterColonyAction(G, actor, rng);
+}
+
+// ── 0.17.1 debug: why did an AI colony pass? (probe only; set `G.__passTrace = []`) ──────────────
+export interface PassDiag {
+  turn: number; id: string; patron: string; level: number; rp: number;
+  freeLines: number; totalLines: number;
+  /** Primary reason (Requires growth path). */
+  reason: string;
+  /** Earth cycle: why tryEarthCycle could not run. */
+  cycle: string;
+  /** Own sovereign / allied Earth bloc has unclaimed slots the actor could claim with a line it could free (switch a non-vital route). */
+  coopBySwitch: boolean;
+  /** An allied (same alliance, other nation) colony needs this actor's Requires-surplus and has a free line. */
+  allyFeed: boolean;
+  /** Requires source exists, but only via occupied lines (switching a non-vital route would develop). */
+  reqBySwitch: boolean;
+}
+export function diagnosePass(G: GameState, actor: Colony): PassDiag {
+  const R = actor.requires;
+  const raw = findSourcesRaw(G, actor, R);
+  const legal = findSources(G, actor, R);
+  const free = freeLines(actor).filter((l) => l.kind !== "borrowed" && !l.lentTo);
+  let reason: string;
+  if (!raw.length) {
+    const earthHasClaimed = G.blocs.some((b) => b.excess.some((x) => x.node === R && x.claimedBy !== null));
+    const colonyHas = G.colonies.some((c) => c.id !== actor.id && extras(c, R) >= 1);
+    reason = colonyHas ? "req_colony_refuses" : earthHasClaimed ? "req_earth_all_claimed" : "req_nowhere";
+  } else if (!legal.length) {
+    const earthRaw = raw.filter((x) => x.kind === "earth");
+    const affinityBlocked = earthRaw.some((x) => x.kind === "earth" && !earthTradeAllowed(G, actor, x.bloc, R, CULTURES, IDEOLOGIES, socialAffinity, consentsExport));
+    reason = affinityBlocked ? "req_trade_locked_bloc" : "req_reach_or_export_slot";
+  } else {
+    reason = free.length ? "req_start_failed" : "req_no_free_line";
+  }
+  // Earth cycle diagnosis (mirrors tryEarthCycle)
+  let cycle = "cycle_impossible_other";
+  if (!free.length) cycle = "cycle_no_free_line";
+  else {
+    let anyUnclaimed = false, anyNonVital = false, anyAllowed = false, anyReach = false;
+    for (const b of G.blocs) b.excess.forEach((slot, i) => {
+      if (slot.claimedBy !== null || slot.node === "Logistics") return;
+      anyUnclaimed = true;
+      if (isVitalNeed(actor, slot.node)) return;
+      anyNonVital = true;
+      if (!earthTradeAllowed(G, actor, b, slot.node, CULTURES, IDEOLOGIES, socialAffinity, consentsExport)) return;
+      anyAllowed = true;
+      const src: TradeSource = { kind: "earth", bloc: b, node: slot.node, slotIndex: i };
+      if (free.some((l) => lineCanServeTrade(l, actor, src))) anyReach = true;
+    });
+    cycle = !anyUnclaimed ? "cycle_no_unclaimed_slot" : !anyNonVital ? "cycle_only_vital_slots"
+      : !anyAllowed ? "cycle_trade_locked" : !anyReach ? "cycle_no_reach" : "cycle_possible_not_chosen";
+  }
+  const allies = (b: EarthBloc) => !isIndependent(actor) && (b.name === actor.patron || (patronAllianceOf(G, actor) && b.alliance === patronAllianceOf(G, actor)));
+  const switchable = occupiedLines(actor).filter((l) => l.route && !l.route.vital && !isVitalNeed(actor, l.route.node) && l.route.node !== R && l.kind !== "borrowed");
+  const coopBySwitch = switchable.length > 0 && G.blocs.some((b) => allies(b) && b.excess.some((slot, i) =>
+    slot.claimedBy === null && slot.node !== "Logistics"
+    && earthTradeAllowed(G, actor, b, slot.node, CULTURES, IDEOLOGIES, socialAffinity, consentsExport)
+    && switchable.some((l) => lineCanServeTrade(l, actor, { kind: "earth", bloc: b, node: slot.node, slotIndex: i }))));
+  const reqBySwitch = legal.length > 0 && !free.length && switchable.some((l) => legal.some((src) => lineCanServeTrade(l, actor, src)));
+  const aAll = patronAllianceOf(G, actor);
+  const allyFeed = !!aAll && G.colonies.some((o) => o.id !== actor.id && !sameNation(o, actor) && patronAllianceOf(G, o) === aAll
+    && extras(actor, o.requires) >= 1 && freeLines(o).length > 0 && !!pickExportLine(actor, o));
+  return {
+    turn: G.turn, id: actor.id, patron: actor.patron, level: colonyLevel(actor), rp: rp(actor, G.bodyTF),
+    freeLines: free.length, totalLines: actor.logisticsLines.length, reason, cycle, coopBySwitch, allyFeed, reqBySwitch,
+  };
 }
 
 /** Free one non-vital non-base line so Independent can spend it on founding. */

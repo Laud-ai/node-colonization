@@ -1,6 +1,6 @@
 # AGENTS.md — Node Colonization
 
-Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.17.0** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags; survival clocks: scaled cover, 3/2/1 clocks, O₂ deaths).
+Solar Realist colony strategy sim (Moon → Mars). TypeScript + Vite (port **5174**). Headless engine and browser UI share the same logic. Current live version: **0.17.1** (L7 + map-first globes, pins, needs tree, suppliers, trade routes, vexillological flags; survival clocks: scaled cover, 3/2/1 clocks, O₂ deaths; RP turn order + AI that spreads develops and works Earth instead of passing).
 
 **Live (GitHub Pages):** https://laud-ai.github.io/node-colonization/  
 **Repo:** https://github.com/Laud-ai/node-colonization
@@ -38,7 +38,7 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 
 | Path | Role |
 |------|------|
-| `src/engine.ts` | Core sim loop |
+| `src/engine.ts` | Core sim loop. 0.17.1 (Tiago, group "AI" rules): `aiTurnOrderRp` → `sortedColonies` highest RP first (off = need score first, which looked like lowest-RP-first); `aiSpreadDevelop` (+`aiSpreadGap` 3) → `reservedForSmallerFriends` (big colony leaves a shared Requires source to a friend ≥3 levels smaller that hasn't acted), `tryFeedFriendRequires` (feed a smaller friend's Requires first), `tryRecallLentLine`, no borrowing from much smaller colonies (`pickBestLender` minLenderLevel); `aiActiveEarth` → before passing: `tryImportLogisticsForCapacity` (Earth / same-nation Logistics), `tryCoopEarthUnlock` (move a non-vital route onto a friendly bloc closest to filling), feed any friend's Requires. Friends = `friendlyColonies` (same nation or same non-Neutral alliance). Debug: `diagnosePass` + `G.__passTrace/__actTrace/__devTrace` |
 | `src/session.ts` | UI session / moves / snapshots |
 | `src/rules.ts` | Live rule flags (Rules tab) |
 | `src/fervorVariants.ts` / `src/solarBlocVariants.ts` | Lobby presets |
@@ -65,7 +65,7 @@ Snapshot builds use Vite `base: "./"` (relative asset URLs) so they load under G
 | `tests/*.test.ts` | Node test suite (`npm test`) |
 | `.github/workflows/pages.yml` | CI test + build + GitHub Pages deploy |
 
-Sims (no rebuild needed between runs): `npm run sim`, `sim:fervor`, `sim:solar`, `sim:growth -- <turns> <seeds> [variant]` (`CLOCKS=094|016` = older clocks; prints O₂ deaths), `sim:clocks -- <turns> <seeds>` (`MODES=legacy,legacyPop,v094,v016,v017`: clock advances / refugee events and how many came from colonies without a native Population; debug trace via `G.__clockTrace`).
+Sims (no rebuild needed between runs): `npm run sim`, `sim:fervor`, `sim:solar`, `sim:growth -- <turns> <seeds> [variant]` (`CLOCKS=094|016` = older clocks; prints O₂ deaths), `sim:passes -- <turns> <seeds>` (`MODES=v0170,v0171`: pass rate by turn/level/bloc, pass reasons, turn-order check, develop spread Gini/top share, Earth cycles/unlocks), `sim:clocks -- <turns> <seeds>` (`MODES=legacy,legacyPop,v094,v016,v017`: clock advances / refugee events and how many came from colonies without a native Population; debug trace via `G.__clockTrace`).
 
 ## Required checks before shipping
 

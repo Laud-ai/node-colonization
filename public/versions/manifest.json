@@ -1,6 +1,13 @@
 {
-  "live": "0.17.0",
+  "live": "0.17.1",
   "versions": [
+    {
+      "version": "0.17.1",
+      "summary": "Fewer passes: RP turn order, develops spread to smaller colonies, colonies work Earth",
+      "available": true,
+      "date": "2026-11-09",
+      "path": "versions/0.17.1/index.html"
+    },
     {
       "version": "0.17.0",
       "summary": "Scaled survival cover, Tiago's 3/2/1 clocks, Oxygen kills",
