@@ -330,12 +330,16 @@ function renderGlobes(snap: UiSnapshot): void {
     if (c.waterClock > 0) alerts.push(`water clock ${c.waterClock}/${c.clockTrips.water}`);
     if (c.oxygenClock > 0) alerts.push(`O₂ clock ${c.oxygenClock}/${c.clockTrips.oxygen}`);
     if (c.oxygenCrisis) alerts.push(`O₂ CRISIS — ${c.oxygenCrisis.suppliers.length} colon${c.oxygenCrisis.suppliers.length === 1 ? "y" : "ies"} with spare O₂ not trading`);
+    if (c.oxygenCrisis?.actions.length) alerts.push(`O₂: ${c.oxygenCrisis.actions.slice(-2).join("; ")}`);
+    if (c.camp) alerts.push(`NOMAD CAMP from ${c.camp.origin} (lacks ${c.camp.resource}; Independent at T${c.camp.independentAt})`);
+    if (c.hoarderUntil) alerts.push(`O₂ HOARDER until T${c.hoarderUntil}`);
+    if (c.casusBelli.length) alerts.push(`casus belli vs ${c.casusBelli.map((x) => x.target).join(", ")}`);
     if (c.atWar) alerts.push(c.proxyAgitation > 0 ? `proxy war (agitation ${c.proxyAgitation})` : "invasion");
     if (fresh) alerts.push("founded this turn");
     by[c.body].push({
       id: c.id, lat: site.lat, lon: site.lon, level: c.level, color: c.nationColor || "#64748b",
       independent: c.independent, fervor: c.independent ? null : Math.max(0, c.fervor) / thr,
-      specialty: c.specialty, alert: need, war: c.atWar, fresh, o2Crisis: !!c.oxygenCrisis,
+      specialty: c.specialty, alert: need, war: c.atWar, fresh, o2Crisis: !!c.oxygenCrisis, camp: !!c.camp, hoarder: !!c.hoarderUntil,
       flagSvg: flagDesignToSvg(c.flag, 30, 20),
       info: [
         c.name,
@@ -522,7 +526,22 @@ function renderDetail(snap: UiSnapshot): void {
     ? `<div class="tags need o2-crisis" data-o2-crisis="1">☠ Oxygen crisis since T${crisis.since} — short ${crisis.shortfall}; Population dies next short turn. `
       + (crisis.suppliers.length
         ? `Spare O₂ not trading: ${crisis.suppliers.map((s) => `${esc(s.name)} (${esc(s.body)}, +${s.surplus})`).join(", ")}`
-        : "No colony has spare O₂.") + `</div>` : "";
+        : "No colony has spare O₂.")
+      + (crisis.actions.length ? `<br>Crisis actions: ${crisis.actions.map(esc).join(" · ")}` : "")
+      + (crisis.refusedBy.length ? `<br>Refused: ${crisis.refusedBy.map(esc).join(", ")}` : "") + `</div>` : "";
+  // 0.19.0 relays, camps, hoarder marks, casus belli, timed fervor
+  const relayBits: string[] = [];
+  for (const l of sel.lines) {
+    if (l.relayTo) relayBits.push(`🔁 ${l.name}: Earth ${l.routeNode ?? "?"} relayed → ${l.relayTo}`);
+    if (l.relayFrom) relayBits.push(`🔁 ${l.routeNode ?? "?"} relayed from ${l.relayFrom}`);
+  }
+  const extraBits: string[] = [];
+  if (sel.camp) extraBits.push(`⛺ Nomad camp since T${sel.camp.since} — refugees from ${sel.camp.origin}, lacking ${sel.camp.resource}; raids ${sel.camp.rejectedBy.length ? sel.camp.rejectedBy.join(", ") : "nobody nearby"}; repelled ${sel.camp.repels}; Independent founder at T${sel.camp.independentAt}`);
+  if (sel.hoarderUntil) extraBits.push(`🏴 Marked O₂ hoarder until T${sel.hoarderUntil}`);
+  for (const cb of sel.casusBelli) extraBits.push(`⚖ Casus belli vs ${cb.target} until T${cb.until}`);
+  for (const f of sel.timedFervor) extraBits.push(`+${f.amount} fervor until T${f.until} (${f.why})`);
+  const crisesDetail = relayBits.length || extraBits.length
+    ? `<div class="tags" data-crises="1">${[...relayBits, ...extraBits].map(esc).join("<br>")}</div>` : "";
   const clockDetail = (clockDetailBits.length
     ? `<div class="tags need">${clockDetailBits.map(esc).join(" · ")}</div>` : "") + crisisDetail;
   el.innerHTML = `
@@ -537,6 +556,7 @@ function renderDetail(snap: UiSnapshot): void {
       <div class="tags need">Requires ${sel.requires}</div>
       ${fervorDetail}
       ${clockDetail}
+      ${crisesDetail}
       <div class="tags edit-hint">Click name / culture / ideology chips to rename</div>
     </div>
     <div class="summary-group ideology"><div class="summary-title">Ideology</div>

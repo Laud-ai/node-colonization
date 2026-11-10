@@ -19,6 +19,10 @@ export interface PinStyle {
   fresh?: boolean;
   /** 0.17.0: Oxygen crisis badge (bottom-right, "O₂" on a red disc). */
   o2Crisis?: boolean;
+  /** 0.19.0: nomad camp (tent on a brown disc, top-left). */
+  camp?: boolean;
+  /** 0.19.0: marked Oxygen hoarder (black disc, amber "H", top-left). */
+  hoarder?: boolean;
 }
 
 /** Short specialty codes for the badge (legend in the Rules tab / tooltip). */
@@ -143,6 +147,25 @@ export function drawPinHead(ctx: CanvasRenderingContext2D, size: number, p: PinS
     ctx.fillStyle = "#fff"; ctx.font = `800 ${Math.round(or * 0.95)}px system-ui, sans-serif`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("O₂", ox, oy + or * 0.06);
+  }
+  // 0.19.0 nomad camp (top-left): brown disc + tent
+  if (p.camp) {
+    const tx = c - R * 0.95, ty = c - R * 0.95, tr = size * 0.12;
+    ctx.fillStyle = "#78350f"; ctx.strokeStyle = "#fde68a"; ctx.lineWidth = size * 0.016;
+    ctx.setLineDash([size * 0.03, size * 0.02]);
+    ctx.beginPath(); ctx.arc(tx, ty, tr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#fde68a";
+    ctx.beginPath(); ctx.moveTo(tx, ty - tr * 0.62); ctx.lineTo(tx + tr * 0.62, ty + tr * 0.5); ctx.lineTo(tx - tr * 0.62, ty + tr * 0.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#78350f";
+    ctx.beginPath(); ctx.moveTo(tx, ty - tr * 0.05); ctx.lineTo(tx + tr * 0.2, ty + tr * 0.5); ctx.lineTo(tx - tr * 0.2, ty + tr * 0.5); ctx.closePath(); ctx.fill();
+  } else if (p.hoarder) {
+    const hx = c - R * 0.95, hy = c - R * 0.95, hr = size * 0.1;
+    ctx.fillStyle = "#111827"; ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = size * 0.016;
+    ctx.beginPath(); ctx.arc(hx, hy, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#f59e0b"; ctx.font = `800 ${Math.round(hr * 1.1)}px system-ui, sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("H", hx, hy + hr * 0.06);
   }
   ctx.restore();
 }

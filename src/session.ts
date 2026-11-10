@@ -1,5 +1,5 @@
 import { applyRules, ruleNum, ruleOn, type Rules } from "./rules.js";
-import { clockTrips, survivalNeed, survivalCover, freePopulation, coveredPopulationNeed } from "./l4.js";
+import { clockTripsFor, survivalNeed, survivalCover, freePopulation, coveredPopulationNeed } from "./l4.js";
 import type { FlagDesign } from "./flagDesign.js";
 import { flagForColony, flagForEarth } from "./flagLineage.js";
 import { needsTree, listSuppliers, type TreeNode, type Supplier } from "./needs.js";
@@ -72,6 +72,8 @@ export interface LineSnap {
   routeNode: NodeType | null; routeSource: string | null; lentTo: string | null;
   exportNode: NodeType | null; exportTo: string | null; reach: string | null;
   vital?: boolean; threatened?: boolean;
+  /** 0.19.0 relay: this Earth line also delivers to … / this line is a relay from … */
+  relayTo?: string | null; relayFrom?: string | null;
 }
 export interface NodeRow {
   node: NodeType; extras: number; clean: number; developed: number; specialty: boolean;
@@ -97,7 +99,12 @@ export interface ColonySnap {
   clockTrips: { food: number; water: number; oxygen: number };
   survival: { scaled: boolean; pop: number; freePop: number; food: [number, number]; water: [number, number]; oxygen: [number, number] };
   /** 0.17.0 hook: Oxygen crisis + colonies with spare Oxygen not sending any. */
-  oxygenCrisis: { since: number; shortfall: number; suppliers: { name: string; body: string; surplus: number }[] } | null;
+  oxygenCrisis: { since: number; shortfall: number; suppliers: { name: string; body: string; surplus: number }[]; actions: string[]; refusedBy: string[] } | null;
+  /** 0.19.0 */
+  camp: { since: number; origin: string; resource: string; repels: number; rejectedBy: string[]; independentAt: number } | null;
+  hoarderUntil: number | null;
+  casusBelli: { target: string; until: number }[];
+  timedFervor: { amount: number; until: number; why: string }[];
   populationStress: number; hasMilitaryToken: boolean; bodyLivable: boolean;
   projectsDone: string[]; projectActive: string | null; projectProgress: number;
   /** 0.13.1 pin alerts (UI read-only). */
@@ -181,12 +188,15 @@ function snapLines(G: GameState, c: Colony): LineSnap[] {
     const reach = l.reach ?? (c.body === "Moon" ? "moon" : "mars");
     const vital = !!(l.route?.vital || l.exportRoute?.vital);
     const threatened = !!(l.route?.threatened || l.exportRoute?.threatened);
+    if (l.relayTo) parts.push(`relays → ${l.relayTo.colonyName}`);
+    if (l.relay) parts.push(`relay from ${l.route?.sourceName ?? "?"}`);
     if (vital && !parts.some((p) => p.includes("vital"))) {
       parts.push(threatened ? "vital⚠" : "vital");
     }
     return {
       id: l.id, name: l.name, kind: l.kind, status: parts.join(" · "),
-      free: l.route === null && !l.lentTo && !l.trojanSend,
+      free: l.route === null && !l.lentTo && !l.trojanSend && !l.relay,
+      relayTo: l.relayTo?.colonyName ?? null, relayFrom: l.relay ? (l.route?.sourceName ?? null) : null,
       routeNode: l.route?.node ?? null,
       routeSource: l.route?.sourceName ?? null,
       lentTo: l.lentTo ?? null,
@@ -331,7 +341,7 @@ function snapColony(G: GameState, c: Colony, actingId: string | null): ColonySna
     foodClock: c.foodClock || 0,
     waterClock: c.waterClock || 0,
     oxygenClock: c.oxygenClock || 0,
-    clockTrips: clockTrips(G),
+    clockTrips: clockTripsFor(G, c),
     survival: {
       scaled: !!G.rules && ruleOn(G, "survivalScaledCover"),
       pop: coveredPopulationNeed(c), freePop: freePopulation(c),
@@ -341,8 +351,18 @@ function snapColony(G: GameState, c: Colony, actingId: string | null): ColonySna
     },
     oxygenCrisis: c.oxygenCrisis
       ? { since: c.oxygenCrisis.since, shortfall: c.oxygenCrisis.shortfall,
-          suppliers: c.oxygenCrisis.suppliers.map((s) => ({ name: s.name, body: s.body, surplus: s.surplus })) }
+          suppliers: c.oxygenCrisis.suppliers.map((s) => ({ name: s.name, body: s.body, surplus: s.surplus })),
+          actions: [...(c.oxygenCrisis.actions ?? [])],
+          refusedBy: (c.oxygenCrisis.refusedBy ?? []).map((id) => G.colonies.find((x) => x.id === id)?.name ?? id) }
       : null,
+    camp: c.nomad ? {
+      since: c.nomad.since, origin: c.nomad.originName, resource: c.nomad.resource, repels: c.nomad.repels,
+      rejectedBy: c.nomad.rejectedBy.map((id) => G.colonies.find((x) => x.id === id)?.name ?? id),
+      independentAt: c.nomad.since + (G.rules ? ruleNum(G, "nomadCampTurns") : 20),
+    } : null,
+    hoarderUntil: c.hoarderUntil != null && c.hoarderUntil >= G.turn ? c.hoarderUntil : null,
+    casusBelli: (c.casusBelli ?? []).filter((x) => x.until >= G.turn).map((x) => ({ target: x.targetName, until: x.until })),
+    timedFervor: (c.fervorEvents ?? []).filter((e) => e.until >= G.turn).map((e) => ({ amount: e.amount, until: e.until, why: e.why })),
     populationStress: c.populationStress || 0,
     hasMilitaryToken: hasInvasionToken(c),
     bodyLivable: (G.bodyTF[c.body] || 0) >= 10,

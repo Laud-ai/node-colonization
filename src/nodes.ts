@@ -128,7 +128,7 @@ export function occupiedLineCount(c: Colony): number {
 }
 /** Free import slot: route === null; export may already be set. Lent-away / trojanSend locks the line. */
 export function freeLines(c: Colony) {
-  return c.logisticsLines.filter((l) => l.route === null && !l.lentTo && !l.trojanSend);
+  return c.logisticsLines.filter((l) => l.route === null && !l.lentTo && !l.trojanSend && !l.relay);
 }
 export function freeLineCount(c: Colony): number {
   return freeLines(c).length;

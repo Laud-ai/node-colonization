@@ -1,4 +1,5 @@
 import { tickGeopolitics } from "./l7.js";
+import * as crises from "./crises.js";
 import { ruleNum, ruleOn } from "./rules.js";
 import { tickProjects } from "./l5.js";
 import { chance, mulberry32, pick, type Rng } from "./rng.js";
@@ -643,6 +644,7 @@ export function isNeutralPatronColony(G: GameState, c: Colony): boolean {
  */
 export function colonyTradeOk(G: GameState, a: Colony, b: Colony): boolean {
   if (a.id === b.id) return false;
+  if (a.nomad || b.nomad) return false; // 0.19.0 camps don't trade
   if (sameBloc(a, b)) return true;
   if (isNeutralPatronColony(G, a) || isNeutralPatronColony(G, b)) return true;
   const aAll = patronAllianceOf(G, a);
@@ -812,7 +814,7 @@ function applyIdeologyImport(G: GameState, actor: Colony, source: TradeSource): 
   }
 }
 
-function applyRouteStartEffects(G: GameState, actor: Colony, source: TradeSource, _rng: Rng): void {
+export function applyRouteStartEffects(G: GameState, actor: Colony, source: TradeSource, _rng: Rng): void {
   applyCultureImport(G, actor, source);
   applyIdeologyImport(G, actor, source);
   if (source.node === "Subversion") onSubversionRouteStart(G, actor);
@@ -829,6 +831,16 @@ function makeRoute(source: TradeSource): ImportRoute {
 
 export function clearRouteOnLine(G: GameState, actor: Colony, line: LogisticsLine, rng: Rng, silent = false): void {
   const route = line.route;
+  // 0.19.0 relay: giver loses its Earth import → the relay ends; taker ends a relay → line disappears
+  if (line.relayTo) crises.dropRelay(G, line);
+  if (line.relay) {
+    crises.releaseRelaySlot(G, line);
+    const i = actor.logisticsLines.indexOf(line);
+    if (i >= 0) actor.logisticsLines.splice(i, 1);
+    line.route = null;
+    if (route && !silent) pushLog(G, `${actor.name} ends relay of ${route.node} from ${route.sourceName}.`, true);
+    return;
+  }
   if (!route && !line.trojanExport && !line.exportRoute) return;
   if (route) {
     const wasVital = !!route.vital || isVitalNeed(actor, route.node);
@@ -890,6 +902,7 @@ function hoardedLines(c: Colony): LogisticsLine[] {
 
 /** Pick highest-affinity assisting colony with a free lendable line. */
 export function pickBestLender(G: GameState, borrower: Colony, forSource?: TradeSource, minLenderLevel = 0): LenderPick | null {
+  if (borrower.nomad) return null;
   const cands: LenderPick[] = [];
   for (const c of G.colonies) {
     if (c.id === borrower.id) continue;
@@ -1037,6 +1050,7 @@ export function switchRoute(G: GameState, actor: Colony, lineId: string, source:
   const line = findLine(actor, lineId);
   if (!line) { pushLog(G, "Unknown logistics line."); return false; }
   if (line.route === null) { pushLog(G, `${line.name} is free — start a route instead.`); return false; }
+  if (line.relay) { pushLog(G, "A relay carries only its Earth good — end it instead."); return false; }
   if (!lineCanServeTrade(line, actor, source)) {
     pushLog(G, `${line.name} reach cannot serve that trade.`);
     return false;
@@ -1359,8 +1373,12 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
   if (actor.acted) return;
   (G as unknown as { __actTrace?: { turn: number; id: string; rp: number; level: number }[] }).__actTrace
     ?.push({ turn: G.turn, id: actor.id, rp: rp(actor, G.bodyTF), level: colonyLevel(actor) });
+  // 0.19.0: nomad camps only raid / settle
+  if (actor.nomad) { crises.campAct(G, actor, rng); actor.acted = true; return; }
   // 0.8.2: cancel prior-turn earthCycle probes so Earth excess rerolls
   cancelEarthCycleRoutes(G, actor, rng);
+  // 0.19.0 oxygen wars: the crisis colony pleads / threatens / seizes first
+  if (actor.oxygenCrisis && crises.runOxygenCrisis(G, actor, rng)) { actor.acted = true; return; }
   const spread = !!G.rules && ruleOn(G, "aiSpreadDevelop");
   const lendAllies = !!G.rules && ruleOn(G, "aiLendAllies");
   const loop = !!G.rules && ruleOn(G, "aiLogisticsLoop");
@@ -1384,16 +1402,16 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
       return best ? importLogistics(G, actor, best, rng) : false;
     }
     const best = pickBestSource(G, actor, sourcesFor(node));
-    if (!best) return false;
+    if (!best) return crises.tryRelay(G, actor, node, rng); // 0.19.0: e.g. Earth goods to Mars via a Moon relay
     const free = freeLines(actor).filter((l) => lineCanServeTrade(l, actor, best));
     const ownFree = free.filter((l) => l.kind !== "borrowed");
     if (ownFree.length) return startRoute(G, actor, ownFree[0]!.id, best, rng);
     if (free.length) return startRoute(G, actor, free[0]!.id, best, rng);
-    // No free lines: one reach-aware lend attempt max
-    if ((actor.lendAttemptsThisTurn || 0) >= 1) return false;
+    // No free lines: one reach-aware lend attempt max (0.19.0: else ask for a relay)
+    if ((actor.lendAttemptsThisTurn || 0) >= 1) return crises.tryRelay(G, actor, node, rng);
     // 0.17.1 spread: never *ask* a colony ≥ gap levels smaller for a line (anti-hoarding, 0.18.0: lenders still always lend to allies who ask)
     const lender = pickBestLender(G, actor, best, spread ? colonyLevel(actor) - ruleNum(G, "aiSpreadGap") + 1 : 0);
-    if (!lender) return false;
+    if (!lender) return crises.tryRelay(G, actor, node, rng);
     if (lender.clearRoute && lender.line.route) {
       pushLog(G, `${lender.colony.name} frees ${lender.line.name} (${lender.line.route.node}) for ally ${actor.name}.`, true);
       clearRouteOnLine(G, lender.colony, lender.line, rng, true);
@@ -1404,6 +1422,7 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
     if (node === "Logistics") return false;
     const best = pickBestSource(G, actor, sourcesFor(node));
     if (!best) return false;
+    // 0.19.0: a line relaying its Earth good to a partner is not switched away
     const candidates = occupiedLines(actor).filter(
       (l) => l.route && l.route.node !== actor.requires && lineCanServeTrade(l, actor, best)
     );
@@ -1693,6 +1712,7 @@ export function earthSpontaneous(G: GameState, rng: Rng): void {
 
 export function cleanup(G: GameState, _rng?: Rng): void {
   returnIdleBorrowedLines(G);
+  crises.sweepCrises(G);
   for (const c of G.colonies) {
     c.acted = false;
     c.lendAttemptsThisTurn = 0;
@@ -2469,6 +2489,8 @@ bindL4({
   clearRouteOnLine,
   findLine,
   foundingCooldownReady,
+  nomadRefugees: (G, origin, reason, rng) => crises.nomadRefugees(G, origin, reason, rng),
+  onOxygenDeaths: (G, c) => crises.markHoarders(G, c),
 });
 
 export {

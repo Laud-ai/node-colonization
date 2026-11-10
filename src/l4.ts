@@ -48,6 +48,10 @@ export interface L4Deps {
   clearRouteOnLine: (G: GameState, actor: Colony, line: import("./types.js").LogisticsLine, rng: Rng, silent?: boolean) => void;
   findLine: (c: Colony, lineId: string) => import("./types.js").LogisticsLine | undefined;
   foundingCooldownReady?: (G: GameState) => boolean;
+  /** 0.19.0 nomad refugees (Food/Water); returns true if handled. */
+  nomadRefugees?: (G: GameState, origin: Colony, reason: SurvivalClockKind, rng: Rng) => boolean;
+  /** 0.19.0 hoarder marks when Population dies of no Oxygen. */
+  onOxygenDeaths?: (G: GameState, c: Colony) => void;
 }
 
 let D: L4Deps | null = null;
@@ -186,13 +190,28 @@ export function westEastInvadeBlocked(G: GameState, attacker: Colony, defender: 
   return (aA === "West" && bA === "East") || (aA === "East" && bA === "West");
 }
 
+/** Same nation, or same non-Neutral Earth alliance (both Earth-aligned). */
+function friendlyL4(G: GameState, a: Colony, b: Colony): boolean {
+  if (sameNation(a, b)) return true;
+  if (isIndependent(a) || isIndependent(b)) return false;
+  const d = deps();
+  const x = d.blocByName(G, a.patron)?.alliance, y = d.blocByName(G, b.patron)?.alliance;
+  return !!x && x !== "Neutral" && x === y;
+}
+/** 0.19.0: attacker (or its nation / allies) holds an active casus belli against defender. */
+export function hasCasusBelli(G: GameState, attacker: Colony, defender: Colony): boolean {
+  if (!G.rules || !ruleOn(G, "oxygenWars")) return false;
+  return G.colonies.some((x) => (x.id === attacker.id || friendlyL4(G, x, attacker))
+    && (x.casusBelli ?? []).some((cb) => cb.targetId === defender.id && cb.until >= G.turn));
+}
+
 export function canInvade(G: GameState, attacker: Colony, defender: Colony): boolean {
   if (attacker.id === defender.id) return false;
   if (attacker.acted) return false;
   if (!hasInvasionToken(attacker)) return false;
   if (sameNation(attacker, defender)) return false; // cross-nation only (v1)
   if (attacker.body !== defender.body) return false; // same body v1
-  if (westEastInvadeBlocked(G, attacker, defender)) return false;
+  if (westEastInvadeBlocked(G, attacker, defender) && !hasCasusBelli(G, attacker, defender)) return false;
   return true;
 }
 
@@ -220,7 +239,9 @@ export function invade(G: GameState, attacker: Colony, defender: Colony, _rng: R
   const rpD = rp(defender, G.bodyTF);
   const invaderWins = rpA > rpD; // tie → defender
 
-  raiseEarthThreat(G, attacker, defender);
+  // 0.19.0: a justified (casus belli) war carries no Earth-threat penalty
+  if (hasCasusBelli(G, attacker, defender)) d.pushLog(G, `⚖ Justified war: ${attacker.name} → ${defender.name} (casus belli).`, true);
+  else raiseEarthThreat(G, attacker, defender);
 
   if (invaderWins) {
     annexColony(G, attacker, defender);
@@ -378,6 +399,20 @@ export function survivalCover(c: Colony, r: SurvivalResource): number {
 export function survivalShortfall(G: GameState, c: Colony, r: SurvivalResource): number {
   return Math.max(0, survivalNeed(G, c, r) - survivalCover(c, r));
 }
+/** 0.19.0 thin air: Oxygen turns of grace on a part-terraformed body (below livable). */
+export function oxygenTripFor(G: GameState, body: Body): number {
+  const base = clockTrips(G).oxygen;
+  if (!G.rules || !ruleOn(G, "thinAirOxygen") || !ruleOn(G, "survivalScaledCover")) return base;
+  const tf = G.bodyTF[body] || 0;
+  if (tf <= 0 || tf >= TF_LIVABLE) return base;
+  if (tf >= ruleNum(G, "thinAirTf3")) return Math.max(base, 3);
+  if (tf >= ruleNum(G, "thinAirTf2")) return Math.max(base, 2);
+  return base;
+}
+/** Per-colony trips (Oxygen depends on the body's TF). */
+export function clockTripsFor(G: GameState, c: Colony): Record<SurvivalClockKind, number> {
+  return { ...clockTrips(G), oxygen: oxygenTripFor(G, c.body) };
+}
 /** 0.17.0 turns of grace per clock. */
 export function clockTrips(G: GameState): Record<SurvivalClockKind, number> {
   if (G.rules && ruleOn(G, "survivalScaledCover")) {
@@ -409,7 +444,7 @@ export function oxygenSuppliersNotTrading(G: GameState, c: Colony): OxygenSuppli
 
 function tickScaledClocks(G: GameState, c: Colony, rng: Rng): void {
   if (stabilityBacked(c) && G.turn % 2 === 0) { updateOxygenCrisis(G, c); return; }
-  const trips = clockTrips(G);
+  const trips = clockTripsFor(G, c);
   const recover = ruleOn(G, "refugeeClockRecovery");
   const trace = (G as unknown as { __clockTrace?: ClockTraceEntry[] }).__clockTrace;
   const key = { food: "foodClock", water: "waterClock", oxygen: "oxygenClock" } as const;
@@ -441,6 +476,7 @@ export function oxygenDeaths(G: GameState, c: Colony, shortfall: number): number
   if (dead <= 0) return 0;
   c.developed.Population -= dead;
   deps().pushLog(G, `☠ ${dead} Population died in ${c.name} (no Oxygen).`, true);
+  deps().onOxygenDeaths?.(G, c);
   G.turnAnnouncements.push(`${dead} Population died in ${c.name} — no Oxygen.`);
   return dead;
 }
@@ -448,6 +484,7 @@ export function oxygenDeaths(G: GameState, c: Colony, shortfall: number): number
 function updateOxygenCrisis(G: GameState, c: Colony): void {
   if ((c.oxygenClock || 0) > 0 && survivalShortfall(G, c, "Oxygen") > 0) {
     c.oxygenCrisis = {
+      ...(c.oxygenCrisis ?? {}),
       since: c.oxygenCrisis?.since ?? G.turn,
       shortfall: survivalShortfall(G, c, "Oxygen"),
       suppliers: oxygenSuppliersNotTrading(G, c),
@@ -483,6 +520,7 @@ export function emitRefugees(
   d.pushLog(G, `🏕 Refugees flee ${origin.name} (${reason} clock).`, true);
   G.turnAnnouncements.push(`Refugees from ${origin.name} (${reason}).`);
   reducePopulationOrStress(G, origin, rng);
+  if ((reason === "food" || reason === "water") && d.nomadRefugees?.(G, origin, reason, rng)) return;
 
   const cultureTags = origin.culture.slice();
   const body = origin.body;
@@ -609,6 +647,12 @@ export function maybeAutoInvade(G: GameState, actor: Colony, rng: Rng): boolean 
   if (!hasInvasionToken(actor)) return false;
   const targets = listInvadeTargets(G, actor);
   if (!targets.length) return false;
+  // 0.19.0: join a justified war (casus belli of own nation / allies) at a higher chance
+  const justified = targets.filter((t) => hasCasusBelli(G, actor, t));
+  if (justified.length && rng() < ruleNum(G, "o2JoinChance")) {
+    justified.sort((a, b) => rp(a, G.bodyTF) - rp(b, G.bodyTF) || a.name.localeCompare(b.name));
+    return invade(G, actor, justified[0]!, rng);
+  }
   // ~8% chance when eligible
   if (rng() >= 0.08) return false;
   // Prefer lowest RP target

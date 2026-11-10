@@ -89,6 +89,10 @@ export interface LogisticsLine {
   lentTo?: string | null;
   /** Borrower-side temporary line that uses a lender's lent capacity. */
   borrowedFrom?: { colonyId: string; lineId: string } | null;
+  /** 0.19.0 relay: this Earth-import line also delivers its good onward to one colony. */
+  relayTo?: { colonyId: string; lineId: string; colonyName: string } | null;
+  /** 0.19.0 relay: receiving side (kind "borrowed", route sourced from the relaying colony). */
+  relay?: boolean;
   /** @deprecated 0.8.3 — use trojanSend reverse-logistics instead. */
   trojanExport?: boolean;
   /**
@@ -99,7 +103,14 @@ export interface LogisticsLine {
 }
 
 export interface OxygenSupplier { id: string; name: string; body: Body; surplus: number }
-export interface OxygenCrisis { since: number; shortfall: number; suppliers: OxygenSupplier[] }
+export interface OxygenCrisis {
+  since: number; shortfall: number; suppliers: OxygenSupplier[];
+  /** 0.19.0 oxygen wars: what the colony did (plead / threat / seize) and who refused. */
+  actions?: string[]; refusedBy?: string[];
+}
+export interface CasusBelli { targetId: string; targetName: string; until: number; reason: string }
+export interface FervorEvent { until: number; amount: number; why: string }
+export interface NomadCamp { since: number; originId: string; originName: string; rejectedBy: string[]; resource: "Food" | "Water"; repels: number; lastRaid?: number }
 
 export interface Colony {
   id: string;
@@ -152,6 +163,14 @@ export interface Colony {
    * Oxygen that are not sending any to this colony — future casus belli / blackmail targets.
    */
   oxygenCrisis?: OxygenCrisis | null;
+  /** 0.19.0: justified wars this colony (and its nation/allies) may wage without the usual penalties. */
+  casusBelli?: CasusBelli[];
+  /** 0.19.0: refused Oxygen while others died — marked until this turn. */
+  hoarderUntil?: number;
+  /** 0.19.0: timed fervor (hoarder trade partner, accepted refugees). */
+  fervorEvents?: FervorEvent[];
+  /** 0.19.0: this colony is a nomad camp (weak, bloc-less, raids those who refused it). */
+  nomad?: NomadCamp | null;
   /** L4: Population stress when refugees flee with no Population extra. */
   populationStress?: number;
   /** 0.9.4 last refugee emission turn (per-colony cooldown). */
