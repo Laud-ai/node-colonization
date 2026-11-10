@@ -404,6 +404,7 @@ export function oxygenTripFor(G: GameState, body: Body): number {
   const base = clockTrips(G).oxygen;
   if (!G.rules || !ruleOn(G, "thinAirOxygen") || !ruleOn(G, "survivalScaledCover")) return base;
   const tf = G.bodyTF[body] || 0;
+  if (body === "Belt") return base; // 0.20.0: no atmosphere — thin air never applies
   if (tf <= 0 || tf >= TF_LIVABLE) return base;
   if (tf >= ruleNum(G, "thinAirTf3")) return Math.max(base, 3);
   if (tf >= ruleNum(G, "thinAirTf2")) return Math.max(base, 2);

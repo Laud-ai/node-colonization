@@ -470,7 +470,7 @@ export function hasSurvivalFailurePressure(c: Colony): boolean {
 
 export function hasSolarHegemonyPressure(G: GameState, c: Colony, P: FervorParams): boolean {
   if (G.turn < P.solarHegemonyAfterTurn) return false;
-  if (c.body !== "Moon" && c.body !== "Mars") return false;
+  if (c.body !== "Moon" && c.body !== "Mars" && c.body !== "Belt") return false;
   const myRp = rp(c, G.bodyTF);
   if (myRp < P.solarHegemonyMinRp) return false;
   // Stronger than a typical Earth-subject peer average in same patron, or high absolute RP

@@ -30,18 +30,20 @@ export interface MapColony { id: string; name: string; body: string; nationColor
 export function solarMapSvg(cols: MapColony[], tf: Record<string, number>, selectedId: string | null): string {
   const W = 520, H = 150;
   const bodies = [
-    { id: "Earth", x: 60, r: 26, fill: "#3d5a73" },
-    { id: "Moon", x: 200, r: 14, fill: "#9a968c" },
-    { id: "Mars", x: 400, r: 20, fill: "#a4553a" },
+    { id: "Earth", x: 50, r: 26, fill: "#3d5a73" },
+    { id: "Moon", x: 170, r: 14, fill: "#9a968c" },
+    { id: "Mars", x: 330, r: 20, fill: "#a4553a" },
+    { id: "Belt", x: 460, r: 9, fill: "#6f6a62" }, // 0.20.0 asteroid belt (no TF: never livable)
   ];
   let s = `<svg class="solar-map" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Solar map">`;
   s += `<rect width="${W}" height="${H}" fill="#14191e"/>`;
-  s += `<line x1="60" y1="60" x2="400" y2="60" stroke="#3a444d" stroke-dasharray="4 4"/>`;
+  s += `<line x1="50" y1="60" x2="460" y2="60" stroke="#3a444d" stroke-dasharray="4 4"/>`;
   for (const b of bodies) {
+    if (b.id === "Belt") s += `<circle cx="${b.x}" cy="60" r="${b.r + 8}" fill="none" stroke="#6f6a62" stroke-width="2" stroke-dasharray="1 3"/>`;
     s += `<circle cx="${b.x}" cy="60" r="${b.r}" fill="${b.fill}"/><text x="${b.x}" y="${60 + b.r + 14}" fill="#d6c7a1" font-size="11" text-anchor="middle" font-family="monospace">${b.id.toUpperCase()}</text>`;
     if (b.id !== "Earth") {
       const t = Math.min(10, tf[b.id] || 0);
-      s += `<rect x="${b.x - 25}" y="${60 + b.r + 20}" width="50" height="5" fill="#2f3b45"/><rect x="${b.x - 25}" y="${60 + b.r + 20}" width="${t * 5}" height="5" fill="#5f7a61"/>`;
+      if (b.id !== "Belt") s += `<rect x="${b.x - 25}" y="${60 + b.r + 20}" width="50" height="5" fill="#2f3b45"/><rect x="${b.x - 25}" y="${60 + b.r + 20}" width="${t * 5}" height="5" fill="#5f7a61"/>`;
       const here = cols.filter((c) => c.body === b.id);
       here.forEach((c, i) => {
         const ang = (i / Math.max(1, here.length)) * Math.PI * 2;

@@ -93,6 +93,7 @@ export const IDEOLOGY_NAME_HINT = IDEOLOGY_HINTS;
 export const BODY_TERMS: Record<Body, readonly string[]> = {
   Moon: ["Lunar", "Moon", "of the Moon", "Selene"],
   Mars: ["Martian", "Mars", "of Mars", "Ares"],
+  Belt: ["Belter", "Belt", "of the Belt", "Ceres"],
 };
 
 export const SUFFIXES = [

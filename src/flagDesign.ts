@@ -123,7 +123,7 @@ export interface FlagInput {
   patron: string;
   ideology: string;
   specialty: NodeType;
-  body: "Moon" | "Mars";
+  body: "Moon" | "Mars" | "Belt";
   /** For Independents: the nation's liege (its national flag is derived from the liege). */
   liege?: { id: string; origin: string; ideology: string } | null;
   /** True for the liege colony itself (its flag is the plain national flag + star). */
@@ -204,7 +204,7 @@ function ensure(p: Tincture[], want: Tincture, keep: number): Tincture[] {
   if (out.length >= 3) out[2] = want; else out.push(want);
   return out.slice(0, 3);
 }
-function bodyVariant(p: Tincture[], body: "Moon" | "Mars", h: number): Tincture[] {
+function bodyVariant(p: Tincture[], body: "Moon" | "Mars" | "Belt", h: number): Tincture[] {
   if (h % 3 !== 0) return p; // sparingly: ~1 in 3 colonies
   if (body === "Mars" && p.includes("gules")) return p.map((t) => (t === "gules" ? "rust" : t));
   if (body === "Moon" && p.includes("argent")) return p.map((t) => (t === "argent" ? "lunar" : t));

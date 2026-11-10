@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Node Colonization — 0.19.0</title>
+    <title>Node Colonization — 0.20.0</title>
     <link rel="stylesheet" href="/src/ui/style.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
     <div id="setupScreen" class="setup-screen">
       <div class="setup-card">
         <div class="setup-brand">
-          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.19.0</span></h1>
+          <h1>NODE COLONIZATION <span class="badge">SETUP / 0.20.0</span></h1>
           <p class="setup-blurb">
             Pre-simulation lobby for <b>fervor</b> and <b>solar-bloc / diplomacy</b> experiments.
             Pick presets on each tab, confirm the threshold, then begin. Defaults:
@@ -56,7 +56,7 @@
           <div class="setup-section">
             <p class="setup-blurb">Rule flags for the live build. <button type="button" id="rulesDefault">Shipped defaults</button> <button type="button" id="rulesLegacy">Legacy (pre-0.9.4)</button> <button type="button" id="flagGalleryBtn">Flag gallery</button></p>
             <div id="rulesForm" class="rules-form"></div>
-            <p class="tags credits">Credits — Moon globe texture: NASA Scientific Visualization Studio CGI Moon Kit (svs.gsfc.nasa.gov/4720), LRO LROC WAC color mosaic (NASA/GSFC/Arizona State Univ.), public domain. Mars globe texture: Viking MDIM 2.1 colorized global mosaic (NASA/JPL/USGS Astrogeology, via Wikimedia Commons), public domain.</p>
+            <p class="tags credits">Credits — Moon globe texture: NASA Scientific Visualization Studio CGI Moon Kit (svs.gsfc.nasa.gov/4720), LRO LROC WAC color mosaic (NASA/GSFC/Arizona State Univ.), public domain. Mars globe texture: Viking MDIM 2.1 colorized global mosaic (NASA/JPL/USGS Astrogeology, via Wikimedia Commons), public domain. Ceres and Vesta textures: Dawn Framing Camera global mosaics (Ceres Dawn FC Global Mosaic 400m; Vesta Dawn FC HAMO Global Mosaic 60m), NASA/JPL-Caltech/UCLA/MPS/DLR/IDA, via USGS Astrogeology Astropedia, public domain (NASA). Other asteroids are procedural.</p>
           </div>
         </div>
 
@@ -84,7 +84,7 @@
     <div id="playScreen" class="play-screen map-first" hidden>
       <header class="topbar">
         <div class="brand">
-          <h1>NODE COLONIZATION <span class="badge">0.19.0 / NEEDS</span></h1>
+          <h1>NODE COLONIZATION <span class="badge">0.20.0 / NEEDS</span></h1>
           <div class="meta">Turn <b id="turn">1</b> · Acting: <b id="acting">—</b> · Phase: <b id="phase">Colony</b></div>
         </div>
         <div class="toolbar">
@@ -109,24 +109,25 @@
         <div class="globe-bar">
           <h2>Solar view</h2>
           <div class="globe-modes" role="group" aria-label="Globe view">
-            <button type="button" data-globe-mode="both" class="selected">Moon + Mars</button>
+            <button type="button" data-globe-mode="both" class="selected">Moon + Mars + Belt</button>
             <button type="button" data-globe-mode="moon">Moon</button>
             <button type="button" data-globe-mode="mars">Mars</button>
+            <button type="button" data-globe-mode="belt">Belt</button>
           </div>
           <div class="globe-modes marker-styles" role="group" aria-label="Marker style">
             <button type="button" data-marker-style="pin" class="selected">Pins</button>
             <button type="button" data-marker-style="glyph">Glyphs</button>
           </div>
-          <div class="globe-modes"><button type="button" id="btnRoutes" class="selected" aria-pressed="true" title="Show trade routes: arcs = regional (same body), lines into space = outer (Earth↔Moon, Moon↔Mars) with the partner's flag">Routes</button></div>
+          <div class="globe-modes"><button type="button" id="btnRoutes" class="selected" aria-pressed="true" title="Show trade routes: arcs = regional (same body), lines into space = outer (Earth↔Moon, Moon↔Mars, Mars↔Belt) with the partner's flag">Routes</button><button type="button" id="btnLegend" title="Open the map legend window">Legend</button></div>
           <span class="sub">Drag to rotate · wheel to zoom · hover / click a marker</span>
         </div>
-        <details class="pin-legend tags"><summary>Legend</summary>Pin: flag under the head = the colony's own flag · head = bloc color (white = Independent) · number = level · stem short L1–4 / medium L5–9 / tall L10+ · ring = fervor toward independence (1 / 2 / 3 lit segments, green → amber → red; dashed outer ring = critical) · badge = specialty · pulsing red = strain or survival clock · ⚔ = invasion / proxy war · dashed = founded this turn<br/>Routes: arc across the surface = regional trade (arrow = direction, two arrows = two-way) · line into space = outer trade with Earth / Moon / Mars; the small framed flag at its end is the trade partner (frame = resource colour; hover it for name and resource; it fades when it would cover a pin).</details>
         <div id="globeWrap" class="globe-wrap mode-both">
           <div id="globeMoon" class="globe-slot"></div>
           <div id="globeMars" class="globe-slot"></div>
+          <div id="globeBelt" class="globe-slot"></div>
         </div>
         <div id="globeStatus" class="tags"></div>
-        <div class="globe-credit tags">Moon: NASA SVS CGI Moon Kit (LRO LROC WAC mosaic, NASA/GSFC/ASU) · Mars: Viking MDIM 2.1 colorized global mosaic (NASA/JPL/USGS) · both public domain</div>
+        <div class="globe-credit tags">Moon: NASA SVS CGI Moon Kit (LRO LROC WAC mosaic, NASA/GSFC/ASU) · Mars: Viking MDIM 2.1 colorized global mosaic (NASA/JPL/USGS) · Ceres, Vesta: Dawn FC global mosaics (NASA/JPL-Caltech/UCLA/MPS/DLR/IDA, via USGS Astrogeology) · all public domain · other asteroids procedural</div>
       </div>
         </div>
         <aside id="dockRight" class="dock dock-right" aria-label="Right windows"></aside>
@@ -194,6 +195,10 @@
         <div class="win-body">
           <div id="log"></div>
         </div>
+      </section>
+      <section class="win" data-win="legend" data-side="right" data-title="Map legend">
+        <div class="win-bar"><span class="win-title">Map legend</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>
+        <div class="win-body"><div id="mapLegend" class="map-legend"></div></div>
       </section>
       <section class="win" data-win="map" data-side="right" data-title="Solar map strip">
         <div class="win-bar"><span class="win-title">Solar map strip</span><span class="win-btns"><button type="button" data-win-act="side" title="Dock on the other side">⇄</button><button type="button" data-win-act="min" title="Minimize">–</button><button type="button" data-win-act="close" title="Close (reopen from Windows)">×</button></span></div>

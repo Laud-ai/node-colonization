@@ -3,15 +3,19 @@
 import { mulberry32 } from "./rng.js";
 import { applyRules } from "./rules.js";
 import { createGame, runTurn, type PassDiag } from "./engine.js";
+import { thrustOf } from "./l5.js";
 const turns = Number(process.argv[2] || 120);
 const seeds = (process.argv[3] || "42,7,99,123,5").split(",").map(Number);
-const OFF019 = { relayLines: false, oxygenWars: false, nomadCamps: false, thinAirOxygen: false };
+const OFF020 = { beltColonies: false, beltRichSpecialty: false, beltDepot: false, beltMilestone: false };
+const OFF019 = { ...OFF020, relayLines: false, oxygenWars: false, nomadCamps: false, thinAirOxygen: false };
 const OFF018 = { ...OFF019, bcNeutral: false, marsFoundingMoonAlly: false, marsMoonOnlyImports: false, aiLendAllies: false, aiLogisticsLoop: false };
 const PATCHES: Record<string, Record<string, boolean | number>> = {
   v0170: { aiTurnOrderRp: false, aiSpreadDevelop: false, aiActiveEarth: false, ...OFF018 },
   v0171: { ...OFF018 },
   v0180: { ...OFF019 },
-  v0190: {},
+  v0190: { ...OFF020 },
+  v0200: {},
+  noDepot: { beltDepot: false }, noRich: { beltRichSpecialty: false }, reach2: { beltThrustReach: 2 },
   noRelay: { relayLines: false }, noO2War: { oxygenWars: false }, noNomad: { nomadCamps: false }, noThinAir: { thinAirOxygen: false },
   noLoop: { aiLogisticsLoop: false },
   noLend: { aiLendAllies: false },
@@ -39,6 +43,7 @@ for (const mode of modes) {
   const marsActs = [0, 0]; let marsDevs = 0;
   let logiEarth = 0, logiCol = 0, moonMarsLends = 0, lends = 0, mars = 0, refugees = 0, o2 = 0;
   const firstMars: number[] = [];
+  const x20 = { belt: 0, first: [] as number[], thrust: 0, milestones: 0, beltActs: 0, beltPass: 0, beltDevs: 0, beltCrises: 0, beltImports: 0 };
   const x19 = { relay: 0, relayMars: 0, crises: 0, pleaOk: 0, pleaNo: 0, justified: 0, seizeWon: 0, seizeLost: 0, hoarder: 0, acc: 0, armed: 0, refused: 0, camps: 0, raids: 0, repelled: 0, absorbed: 0, indep: 0 };
   let devs = 0, giniSum = 0, topShareSum = 0, cyclesN = 0, unlocks = 0, revolts = 0, cols = 0;
   for (const seed of seeds) {
@@ -50,13 +55,22 @@ for (const mode of modes) {
     const dt: { turn: number; id: string; level: number; patron: string }[] = [];
     const lt: { turn: number; from: string; to: string }[] = [], gt: { kind: string }[] = [];
     Object.assign(G, { __actTrace: at, __passTrace: pt, __devTrace: dt, __lendTrace: lt, __logiTrace: gt });
-    const crisisSeen = new Set<string>();
+    const crisisSeen = new Set<string>(), beltCrisis = new Set<string>();
     for (let t = 1; t <= turns; t++) {
       runTurn(G, rng);
-      for (const c of G.colonies) if (c.oxygenCrisis) crisisSeen.add(`${c.id}|${c.oxygenCrisis.since}`);
+      for (const c of G.colonies) if (c.oxygenCrisis) { crisisSeen.add(`${c.id}|${c.oxygenCrisis.since}`); if (c.body === "Belt") beltCrisis.add(`${c.id}|${c.oxygenCrisis.since}`); }
     }
-    x19.crises += crisisSeen.size;
+    x19.crises += crisisSeen.size; x20.beltCrises += beltCrisis.size;
+    x20.belt += G.colonies.filter((c) => c.body === "Belt").length;
+    const fb = G.log.find((e) => /founded .* on the asteroid belt/.test(e.msg));
+    x20.first.push(fb ? fb.turn : 999);
+    x20.thrust += G.colonies.reduce((s, c) => s + thrustOf(c), 0);
+    x20.milestones += G.log.filter((e) => /BELT MILESTONE/.test(e.msg)).length;
+    x20.beltImports += G.colonies.filter((c) => c.body === "Belt").reduce((s, c) => s + c.logisticsLines.filter((l) => l.route).length, 0);
     const passKey = new Set(pt.map((p) => `${p.turn}|${p.id}`));
+    const beltIds = new Set(G.colonies.filter((c) => c.body === "Belt").map((c) => c.id));
+    for (const a of at) if (beltIds.has(a.id)) { x20.beltActs++; if (passKey.has(`${a.turn}|${a.id}`)) x20.beltPass++; }
+    x20.beltDevs += dt.filter((d) => beltIds.has(d.id)).length;
     const patronOf = new Map(G.colonies.map((c) => [c.id, c.patron]));
     for (const p of pt) patronOf.set(p.id, p.patron);
     for (const a of at) {
@@ -123,5 +137,6 @@ for (const mode of modes) {
   console.log(`  develops per colony action by level: ${Object.entries(byLvl).sort().map(([k, [a]]) => `${k} ${pct(devByLvl[k] || 0, a)}`).join(" · ")}`);
   console.log(`Logistics imports ${(logiEarth / n).toFixed(1)} Earth + ${(logiCol / n).toFixed(1)} colony /seed · lends ${(lends / n).toFixed(1)}/seed (Moon→Mars ${(moonMarsLends / n).toFixed(1)}) · Mars colonies at end ${(mars / n).toFixed(1)}/seed · first Mars founding T ${firstMars.map((t) => (t >= 999 ? "never" : t)).join(",")} · Mars pass rate ${pct(marsActs[1], marsActs[0])} · Mars develops ${(marsDevs / n).toFixed(1)}/seed · refugee waves ${refugees} · O₂ deaths ${o2}`);
   console.log(`0.19: relays ${x19.relay} (to Mars ${x19.relayMars}) · O₂ crises ${x19.crises} · pleas accepted ${x19.pleaOk} / refused ${x19.pleaNo} · justified wars ${x19.justified} · seizures won ${x19.seizeWon} / lost ${x19.seizeLost} · hoarder marks ${x19.hoarder} · refugees accepted ${x19.acc} / armed ${x19.armed} / all-refused ${x19.refused} · camps ${x19.camps} (raids ${x19.raids}, repelled ${x19.repelled}, absorbed ${x19.absorbed}, → Independent ${x19.indep})`);
+  console.log(`0.20: belt colonies ${(x20.belt / n).toFixed(1)}/seed · first belt founding T ${x20.first.map((t) => (t >= 999 ? "never" : t)).join(",")} · Thrust total at end ${(x20.thrust / n).toFixed(1)}/seed · belt pass rate ${pct(x20.beltPass, x20.beltActs)} · belt develops ${(x20.beltDevs / n).toFixed(1)}/seed · belt active imports at end ${x20.beltImports} · belt O₂ crises ${x20.beltCrises} · milestones ${x20.milestones}`);
   console.log(`earth cycles ${(cyclesN / n).toFixed(1)}/seed · earth unlocks ${(unlocks / n).toFixed(1)}/seed · revolutions ${revolts} · colonies ${(cols / n).toFixed(1)}/seed`);
 }

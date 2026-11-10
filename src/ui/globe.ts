@@ -14,8 +14,11 @@ import { drawAlertRing, drawPinHead, stemHeight } from "./pinIcon.js";
 import type { NodeType } from "../types.js";
 import moonUrl from "./textures/moon.jpg?url";
 import marsUrl from "./textures/mars.jpg?url";
+import ceresUrl from "./textures/ceres.jpg?url";
+import vestaUrl from "./textures/vesta.jpg?url";
+import { BELT_RING_RADIUS, BELT_ROCKS, type BeltRockDef } from "./beltRocks.js";
 
-export type GlobeBody = "Moon" | "Mars";
+export type GlobeBody = "Moon" | "Mars" | "Belt";
 export type MarkerStyle = "pin" | "glyph";
 export interface GlobeMarker {
   id: string; lat: number; lon: number; level: number; color: string;
@@ -30,6 +33,8 @@ export interface GlobeMarker {
   camp?: boolean; hoarder?: boolean;
   /** 0.15.2 the colony's own flag (small-mode SVG), shown on the pin as its primary identity. */
   flagSvg?: string;
+  /** 0.20.0 belt view: which asteroid the colony sits on. */
+  rock?: string;
 }
 
 const RADIUS = 1;
@@ -38,7 +43,17 @@ const HUD_CANVAS = 128;
 /** Game view is smaller on screen than the Sep 1 globe; enlarge glyphs a bit. */
 const MARKER_SCALE = 1.5;
 const OUT = new THREE.Vector3(0, 0, 1);
-const TEXTURES: Record<GlobeBody, string> = { Moon: moonUrl, Mars: marsUrl };
+const TEXTURES: Record<"Moon" | "Mars", string> = { Moon: moonUrl, Mars: marsUrl };
+const ROCK_TEXTURES: Record<string, string> = { Ceres: ceresUrl, Vesta: vestaUrl };
+/** 0.20.0 belt: pins lift less above a small rock (world units per unit stem height). */
+const BELT_STEM = 0.55;
+
+/** Own tiny LCG (cosmetic only). */
+function lcg(seed: number): () => number {
+  let s = seed >>> 0 || 1;
+  return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
+}
+interface Rock { def: BeltRockDef; center: THREE.Vector3; r: number; mesh: THREE.Mesh }
 
 /** Equirectangular maps centered on 0° lon; SphereGeometry puts texture center at +X. */
 function latLonToVector3(lat: number, lon: number, r: number, t = new THREE.Vector3()): THREE.Vector3 {
@@ -51,10 +66,12 @@ function latLonToVector3(lat: number, lon: number, r: number, t = new THREE.Vect
 export interface GlobeRoute {
   id: string; kind: "regional" | "outer"; color: string;
   /** regional: a = source, b = destination. outer: a = this colony's site. */
-  a: { lat: number; lon: number }; b?: { lat: number; lon: number };
+  a: { lat: number; lon: number; rock?: string }; b?: { lat: number; lon: number; rock?: string };
   twoWay: boolean;
   /** outer only */
   inbound?: boolean; otherBody?: string; flagSvg?: string; label?: string; fanIndex?: number;
+  /** 0.20.0 grouped outer routes (same colony, same partner body, same direction): count + every label for the tooltip. */
+  count?: number; labels?: string[];
 }
 
 interface Pin {
@@ -67,6 +84,8 @@ interface Pin {
   sprites?: THREE.Sprite[];
   /** Point whose visibility decides the sprites (pin tip / lifted glyph site). */
   anchor?: THREE.Vector3;
+  /** 0.20.0 occluding body for the limb test (globe: origin / RADIUS; belt: the pin's rock). */
+  occ?: { c: THREE.Vector3; r: number };
 }
 
 /** 0.15.2 flag sizes (sizeAttenuation=false units): the colony's own flag is clearly larger than trade-partner flags. */
@@ -122,21 +141,22 @@ export class GlobeView {
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.setClearColor(0x05070d, 1);
 
-    this.camera.position.copy(body === "Moon" ? new THREE.Vector3(0, -1.35, 2.55) : new THREE.Vector3(0, 0.25, 2.9));
+    this.camera.position.copy(body === "Moon" ? new THREE.Vector3(0, -1.35, 2.55) : body === "Belt" ? new THREE.Vector3(0, 4.6, 9.2) : new THREE.Vector3(0, 0.25, 2.9));
     this.controls = new OrbitControls(this.camera, this.canvas);
     Object.assign(this.controls, {
       enablePan: false, enableDamping: true, dampingFactor: 0.08, rotateSpeed: 0.55, zoomSpeed: 0.85,
       minDistance: 1.25, maxDistance: 6, minPolarAngle: 0.04, maxPolarAngle: Math.PI - 0.04,
     });
+    if (body === "Belt") Object.assign(this.controls, { minDistance: 0.8, maxDistance: 18 });
 
     // Near side (0° lon) faces the camera.
-    this.group.rotation.y = -Math.PI / 2;
+    if (body !== "Belt") this.group.rotation.y = -Math.PI / 2;
     this.scene.add(this.group, makeStars(1600));
     this.sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(RADIUS, 96, 64),
+      new THREE.SphereGeometry(body === "Belt" ? 0.001 : RADIUS, body === "Belt" ? 4 : 96, body === "Belt" ? 4 : 64),
       new THREE.MeshBasicMaterial({ color: body === "Moon" ? 0x8a8a8a : 0x8a4a32 }),
     );
-    this.group.add(this.sphere);
+    if (body === "Belt") { this.sphere.visible = false; this.buildBelt(); } else this.group.add(this.sphere);
 
     this.controls.addEventListener("start", () => { this.userMoved = true; });
     this.canvas.addEventListener("pointerdown", (e) => { this.down = { x: e.clientX, y: e.clientY }; });
@@ -156,6 +176,22 @@ export class GlobeView {
   private ensureTexture(): void {
     if (this.textureRequested) return;
     this.textureRequested = true;
+    if (this.body === "Belt") {
+      // 0.20.0: Ceres + Vesta Dawn maps, loaded only when the belt view is first shown
+      let left = 0, failed = false;
+      for (const rk of this.rocks) {
+        const url = ROCK_TEXTURES[rk.def.name];
+        if (!url) continue;
+        left++;
+        new THREE.TextureLoader().load(url, (t) => {
+          t.colorSpace = THREE.SRGBColorSpace;
+          const mat = rk.mesh.material as THREE.MeshStandardMaterial;
+          mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true;
+          if (--left === 0 && !failed) this.el.dataset.texture = "loaded";
+        }, undefined, () => { failed = true; this.el.dataset.texture = "failed"; });
+      }
+      return;
+    }
     new THREE.TextureLoader().load(TEXTURES[this.body], (t) => {
       t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
@@ -163,6 +199,82 @@ export class GlobeView {
       mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true;
       this.el.dataset.texture = "loaded";
     }, undefined, () => { this.el.dataset.texture = "failed"; });
+  }
+
+  // --- 0.20.0 asteroid belt (ring of named rocks; Ceres + Vesta textured, the rest procedural) ---
+  private rocks: Rock[] = [];
+  private rockByName = new Map<string, Rock>();
+  private buildBelt(): void {
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.35));
+    const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    sun.position.set(6, 3, 4);
+    this.scene.add(sun);
+    // dust ring
+    const rnd = lcg(4242), n = 1400, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * Math.PI * 2, rr = BELT_RING_RADIUS - 0.55 + rnd() * 1.1, yy = (rnd() - 0.5) * 0.22;
+      pos.set([Math.cos(a) * rr, yy, Math.sin(a) * rr], i * 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    this.group.add(new THREE.Points(g, new THREE.PointsMaterial({ size: 0.018, color: 0x9a8f80, transparent: true, opacity: 0.55, depthWrite: false })));
+    BELT_ROCKS.forEach((def, i) => {
+      const a = THREE.MathUtils.degToRad(def.angle);
+      const center = new THREE.Vector3(Math.cos(a) * BELT_RING_RADIUS, def.y, Math.sin(a) * BELT_RING_RADIUS);
+      let geo: THREE.BufferGeometry;
+      if (def.textured) geo = new THREE.SphereGeometry(1, 48, 32);
+      else {
+        // procedural rock: displaced icosphere (deterministic per rock)
+        const ico = new THREE.IcosahedronGeometry(1, 3);
+        const p = ico.getAttribute("position") as THREE.BufferAttribute;
+        const r2 = lcg(1000 + i * 77);
+        const bumps = Array.from({ length: 9 }, () => ({ d: new THREE.Vector3(r2() - 0.5, r2() - 0.5, r2() - 0.5).normalize(), k: 0.06 + r2() * 0.14 }));
+        const v = new THREE.Vector3();
+        // displace by direction (shared vertices of the non-indexed geometry move together)
+        for (let j = 0; j < p.count; j++) {
+          v.fromBufferAttribute(p, j).normalize();
+          let s = 1;
+          for (const b of bumps) s -= b.k * Math.max(0, v.dot(b.d) - 0.55) * 2.2;
+          s += 0.03 * Math.sin(v.x * 9 + i) * Math.cos(v.y * 7 - i);
+          p.setXYZ(j, v.x * s, v.y * s, v.z * s);
+        }
+        ico.computeVertexNormals();
+        geo = ico;
+      }
+      const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(def.color), roughness: 1, metalness: 0, flatShading: !def.textured });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.copy(center);
+      mesh.scale.set(def.r * def.shape[0], def.r * def.shape[1], def.r * def.shape[2]);
+      mesh.userData.rock = def.name;
+      this.group.add(mesh);
+      const rock: Rock = { def, center, r: def.r * Math.min(...def.shape) * 0.95, mesh };
+      this.rocks.push(rock); this.rockByName.set(def.name, rock);
+      // name label
+      const tex = this.canvasTex(128, (ctx) => {
+        ctx.font = "600 22px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillStyle = "rgba(5,7,13,0.55)"; ctx.fillRect(4, 46, 120, 36);
+        ctx.fillStyle = "#d6c7a1"; ctx.fillText(def.name, 64, 64);
+      });
+      const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, sizeAttenuation: false, depthWrite: false, depthTest: false, transparent: true, opacity: 0.85 }));
+      lab.position.copy(center.clone().add(new THREE.Vector3(0, -(def.r * def.shape[1] + 0.09), 0)));
+      lab.scale.set(0.085, 0.085, 1);
+      lab.renderOrder = 1;
+      this.group.add(lab);
+    });
+    this.el.dataset.rocks = String(this.rocks.length);
+  }
+  private occluders(): THREE.Object3D[] { return this.body === "Belt" ? this.rocks.map((r) => r.mesh) : [this.sphere]; }
+  /** Surface point + outward normal for a site (globe: unit sphere; belt: ray-cast onto the named rock). */
+  private surface(lat: number, lon: number, rockName?: string): { p: THREE.Vector3; n: THREE.Vector3; occ: { c: THREE.Vector3; r: number }; k: number } {
+    const n = latLonToVector3(lat, lon, 1).normalize();
+    if (this.body !== "Belt") return { p: n.clone().multiplyScalar(RADIUS), n, occ: { c: new THREE.Vector3(), r: RADIUS }, k: 1 };
+    const rock = this.rockByName.get(rockName ?? "") ?? this.rocks[0]!;
+    rock.mesh.updateMatrixWorld();
+    const from = rock.center.clone().add(n.clone().multiplyScalar(rock.def.r * 4));
+    this.ray.set(from, n.clone().negate());
+    const hit = this.ray.intersectObject(rock.mesh, false)[0];
+    const p = hit ? hit.point.clone() : rock.center.clone().add(n.clone().multiplyScalar(rock.def.r));
+    return { p, n, occ: { c: rock.center.clone(), r: rock.r }, k: BELT_STEM };
   }
 
   private routeRoot = new THREE.Group();
@@ -253,7 +365,7 @@ export class GlobeView {
     for (const r of routes) {
       const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(r.color) });
       this.routeDisposables.push(mat);
-      if (r.kind === "regional" && r.b) {
+      if (r.kind === "regional" && r.b && this.body !== "Belt") {
         const va = latLonToVector3(r.a.lat, r.a.lon, 1).normalize();
         const vb = latLonToVector3(r.b.lat, r.b.lon, 1).normalize();
         const ang = va.angleTo(vb);
@@ -276,20 +388,24 @@ export class GlobeView {
         cone(mat, curve.getPointAt(0.88), curve.getTangentAt(0.88));
         if (r.twoWay) cone(mat, curve.getPointAt(0.12), curve.getTangentAt(0.12).negate());
       } else {
-        const n = latLonToVector3(r.a.lat, r.a.lon, 1).normalize();
+        const sf = this.surface(r.a.lat, r.a.lon, r.a.rock);
+        const n = sf.n;
         let t1 = new THREE.Vector3().crossVectors(n, UP);
         if (t1.lengthSq() < 1e-4) t1 = new THREE.Vector3(1, 0, 0);
         t1.normalize().applyAxisAngle(n, (r.fanIndex || 0) * 1.25);
         const dir = n.clone().add(t1.multiplyScalar(0.45)).normalize();
-        const start = n.clone().multiplyScalar(RADIUS + DECAL_OFFSET);
-        const end = start.clone().add(dir.clone().multiplyScalar(0.42));
+        const start = sf.p.clone().add(n.clone().multiplyScalar(DECAL_OFFSET));
+        const end = start.clone().add(dir.clone().multiplyScalar(this.body === "Belt" ? 0.3 : 0.42));
         const geo = new THREE.TubeGeometry(new THREE.LineCurve3(start, end), 4, 0.0035, 6, false);
         this.routeDisposables.push(geo);
         this.routeRoot.add(new THREE.Mesh(geo, mat));
         if (r.inbound || r.twoWay) cone(mat, start.clone().add(dir.clone().multiplyScalar(0.06)), dir.clone().negate());
         if (!r.inbound || r.twoWay) cone(mat, end.clone(), dir);
         // 0.15.2: small partner flag framed in the route colour at the far end; text on hover.
-        const tip = [`${r.inbound ? "←" : "→"} ${r.otherBody ?? ""}`, r.label ?? ""];
+        // 0.20.0 grouped routes: one label per (colony, partner body, direction) with a ×N count
+        const tip = (r.count ?? 1) > 1
+          ? [`${r.inbound ? "←" : "→"} ${r.otherBody ?? ""} ×${r.count}`, ...(r.labels ?? [r.label ?? ""])]
+          : [`${r.inbound ? "←" : "→"} ${r.otherBody ?? ""}`, r.label ?? ""];
         const { tex } = this.flagTexture(r.flagSvg, r.color, (ok, inked) => {
           if (ok) { flagLoaded++; minInk = Math.min(minInk, inked); } else flagFailed++;
           this.el.dataset.routeFlagsLoaded = String(flagLoaded);
@@ -303,6 +419,25 @@ export class GlobeView {
         sprite.scale.set(ROUTE_FLAG_W * 1.17, ROUTE_FLAG_W * 0.83, 1);
         sprite.renderOrder = 3; // below pin heads/flags (4)
         sprite.userData.routeId = `route:${r.id}`;
+        sprite.userData.occ = sf.occ;
+        if ((r.count ?? 1) > 1) {
+          // count badge beside the partner flag
+          const btex = this.canvasTex(64, (ctx) => {
+            ctx.fillStyle = "rgba(5,7,13,0.85)"; ctx.beginPath(); ctx.arc(32, 32, 26, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = r.color; ctx.lineWidth = 4; ctx.stroke();
+            ctx.fillStyle = "#fff"; ctx.font = "bold 34px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(`${r.count}`, 32, 34);
+          });
+          const bmat = new THREE.SpriteMaterial({ map: btex, sizeAttenuation: false, depthWrite: false, depthTest: false, transparent: true });
+          const badge = new THREE.Sprite(bmat);
+          badge.position.copy(sprite.position);
+          badge.center.set(-0.25, -0.15);
+          badge.scale.set(ROUTE_FLAG_W * 0.85, ROUTE_FLAG_W * 0.85, 1);
+          badge.renderOrder = 3;
+          sprite.userData.badge = badge;
+          this.routeRoot.add(badge);
+          this.routeDisposables.push(btex, bmat);
+        }
         this.routeTips.set(`route:${r.id}`, { lines: tip, color: r.color });
         this.routeLabels.push(sprite);
         this.routeRoot.add(sprite);
@@ -310,6 +445,7 @@ export class GlobeView {
       }
     }
     this.el.dataset.routes = String(routes.length);
+    this.el.dataset.groupedRoutes = String(routes.filter((r) => (r.count ?? 1) > 1).length);
     this.el.dataset.routeFlags = String(flagTotal);
   }
 
@@ -341,7 +477,7 @@ export class GlobeView {
       this.pins.set(m.id, p);
     }
     this.el.dataset.markers = String(this.pins.size);
-    if (!this.userMoved && this.pins.size) this.aimAtColonies();
+    if (!this.userMoved && this.pins.size && this.body !== "Belt") this.aimAtColonies();
   }
 
   /** Face the hemisphere that shows the most colonies (direction among marker sites). */
@@ -381,26 +517,27 @@ export class GlobeView {
     });
     const mesh = new THREE.Mesh(this.geo, mat);
     mesh.renderOrder = 2;
-    const pos = latLonToVector3(m.lat, m.lon, RADIUS + DECAL_OFFSET);
+    const sf = this.surface(m.lat, m.lon, m.rock);
+    const pos = sf.p.clone().add(sf.n.clone().multiplyScalar(DECAL_OFFSET));
     mesh.position.copy(pos);
-    mesh.quaternion.setFromUnitVectors(OUT, pos.clone().normalize());
-    const s = worldPlaneSize(m.level) * MARKER_SCALE * (sel ? 1.15 : 1);
+    mesh.quaternion.setFromUnitVectors(OUT, sf.n);
+    const s = worldPlaneSize(m.level) * MARKER_SCALE * (sel ? 1.15 : 1) * (this.body === "Belt" ? 0.7 : 1);
     mesh.scale.set(s, s, 1);
     const root = new THREE.Group();
     root.add(mesh);
-    const pin: Pin = { m, root, pickables: [mesh], key: "", textures: [tex], materials: [mat], geos: [], head: mesh, sprites: [], anchor: pos.clone().multiplyScalar(1.01) };
+    const pin: Pin = { m, root, pickables: [mesh], key: "", textures: [tex], materials: [mat], geos: [], head: mesh, sprites: [], anchor: pos.clone().add(sf.n.clone().multiplyScalar(0.01)), occ: sf.occ };
     // 0.15.2 own flag beside the glyph (to the right); anchored just above the surface
-    this.pinFlag(pin, m, pos.clone().multiplyScalar(1.01), PIN_FLAG_W * 0.8 * (sel ? 1.15 : 1), [-0.35, 0.5]);
+    this.pinFlag(pin, m, pos.clone().add(sf.n.clone().multiplyScalar(0.01)), PIN_FLAG_W * 0.8 * (sel ? 1.15 : 1), [-0.35, 0.5]);
     return pin;
   }
 
   private buildPin(m: GlobeMarker, sel: boolean): Pin {
     const root = new THREE.Group();
-    const base = latLonToVector3(m.lat, m.lon, RADIUS);
-    const n = base.clone().normalize();
-    const tip = n.clone().multiplyScalar(RADIUS + stemHeight(m.level));
+    const sf = this.surface(m.lat, m.lon, m.rock);
+    const base = sf.p, n = sf.n;
+    const h = stemHeight(m.level) * sf.k;
+    const tip = base.clone().add(n.clone().multiplyScalar(h));
     // Stem: thin cylinder (WebGL lines are 1px), with a dark sleeve for contrast on the bright Moon
-    const h = stemHeight(m.level);
     const stemGeo = new THREE.CylinderGeometry(0.0032, 0.0032, h, 6, 1, true);
     const sleeveGeo = new THREE.CylinderGeometry(0.0055, 0.0055, h, 6, 1, true);
     const stemMat = new THREE.MeshBasicMaterial({ color: m.independent ? 0xffffff : new THREE.Color(m.color) });
@@ -408,14 +545,14 @@ export class GlobeView {
     const stem = new THREE.Mesh(stemGeo, stemMat);
     const shadow = new THREE.Mesh(sleeveGeo, shadowMat);
     for (const o of [stem, shadow]) {
-      o.position.copy(n.clone().multiplyScalar(RADIUS + h / 2));
+      o.position.copy(base.clone().add(n.clone().multiplyScalar(h / 2)));
       o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
     }
     shadow.renderOrder = 1; stem.renderOrder = 2;
     const footGeo = new THREE.CircleGeometry(0.008, 12);
     const footMat = new THREE.MeshBasicMaterial({ color: 0x05070d, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     const foot = new THREE.Mesh(footGeo, footMat);
-    foot.position.copy(n.clone().multiplyScalar(RADIUS + DECAL_OFFSET));
+    foot.position.copy(base.clone().add(n.clone().multiplyScalar(DECAL_OFFSET)));
     foot.quaternion.setFromUnitVectors(OUT, n);
     const tex = this.canvasTex(PIN_HEAD_PX, (ctx) => drawPinHead(ctx, PIN_HEAD_PX, {
       level: m.level, color: m.color, independent: m.independent, fervor: m.fervor,
@@ -428,7 +565,7 @@ export class GlobeView {
     head.scale.set(sc, sc, 1);
     head.renderOrder = 4;
     root.add(shadow, stem, foot, head);
-    const pin: Pin = { m, root, pickables: [head], key: "", textures: [tex], materials: [stemMat, shadowMat, footMat, headMat], geos: [stemGeo, sleeveGeo, footGeo], head, sprites: [head], anchor: tip.clone() };
+    const pin: Pin = { m, root, pickables: [head], key: "", textures: [tex], materials: [stemMat, shadowMat, footMat, headMat], geos: [stemGeo, sleeveGeo, footGeo], head, sprites: [head], anchor: tip.clone(), occ: sf.occ };
     // 0.15.2 own flag: a pennant flying right from the stem just below the fervor ring (badge is top-right,
     // swords bottom-left, so the lower-right is free). Top-left corner sits 0.40·head below / 0.06·head right of the tip.
     const fw = PIN_FLAG_W * (sel ? 1.2 : 1), fh = (fw * 2) / 3;
@@ -454,6 +591,16 @@ export class GlobeView {
    * (keeping the viewing direction) so the whole body fits.
    */
   refit(): void {
+    if (this.body === "Belt") {
+      // belt: whole ring back in frame (zoom on a rock in the single view would crop the narrow panel)
+      if (this.controls.target.lengthSq() > 1e-6 || this.camera.position.length() < 10) {
+        const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+        this.controls.target.set(0, 0, 0);
+        this.camera.position.copy(dir.multiplyScalar(10.3));
+        this.controls.update();
+      }
+      return;
+    }
     const d = this.body === "Moon" ? 2.885 : 2.91;
     if (this.camera.position.length() < d) {
       this.camera.position.setLength(d);
@@ -465,6 +612,15 @@ export class GlobeView {
   focus(id: string): boolean {
     const p = this.pins.get(id);
     if (!p) return false;
+    if (this.body === "Belt" && p.occ) {
+      // belt: orbit the colony's rock, looking at the colony's side
+      const c = p.occ.c.clone();
+      const out = (p.anchor ?? c).clone().sub(c).normalize();
+      this.controls.target.copy(c);
+      this.camera.position.copy(c.clone().add(out.multiplyScalar(2.3)).add(new THREE.Vector3(0, 0.6, 0)));
+      this.controls.update();
+      return true;
+    }
     const w = p.pickables[0]!.getWorldPosition(new THREE.Vector3()).normalize();
     this.camera.position.copy(w.multiplyScalar(this.camera.position.length()));
     this.controls.update();
@@ -475,10 +631,11 @@ export class GlobeView {
     const r = this.canvas.getBoundingClientRect();
     this.ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     this.ray.setFromCamera(this.ndc, this.camera);
-    const labels = this.routeRoot.visible ? this.routeLabels.filter((s) => (s.material as THREE.SpriteMaterial).opacity > 0.5) : [];
-    const hits = this.ray.intersectObjects([this.sphere, ...[...this.pins.values()].flatMap((p) => p.pickables), ...labels], false);
+    const labels = this.routeRoot.visible ? this.routeLabels.filter((s) => s.visible && (s.material as THREE.SpriteMaterial).opacity > 0.5) : [];
+    const occ = this.occluders();
+    const hits = this.ray.intersectObjects([...occ, ...[...this.pins.values()].flatMap((p) => p.pickables), ...labels], false);
     for (const h of hits) {
-      if (h.object === this.sphere) break; // marker behind the globe
+      if (occ.includes(h.object)) break; // marker behind the globe / rock
       const id = (h.object.userData.id ?? h.object.userData.routeId) as string | undefined;
       if (id) return id;
     }
@@ -531,7 +688,12 @@ export class GlobeView {
     for (const p of this.pins.values()) {
       if (!p.sprites || !p.anchor) continue;
       w0.copy(p.anchor).applyMatrix4(this.group.matrixWorld);
-      const vis = limbVisibility(cam, w0, RADIUS);
+      let vis: number;
+      if (p.occ) {
+        // limb test against the pin's own body (sphere centred at origin in the helper → shift)
+        const c = p.occ.c.clone().applyMatrix4(this.group.matrixWorld);
+        vis = limbVisibility(cam.clone().sub(c), w0.clone().sub(c), p.occ.r);
+      } else vis = limbVisibility(cam, w0, RADIUS);
       if (vis === 0) hidden++;
       for (const s of p.sprites) {
         s.visible = vis > 0;
@@ -558,10 +720,19 @@ export class GlobeView {
       const p = toPx(s);
       const hitPin = heads.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < headR + labR);
       const hitLab = placed.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < labR * 1.6);
-      const lv = limbVisibility(this.camera.position, s.getWorldPosition(new THREE.Vector3()), RADIUS);
-      s.visible = lv > 0;
-      (s.material as THREE.SpriteMaterial).opacity = (hitPin ? 0.18 : hitLab ? 0.45 : 1) * lv;
-      if (!hitPin && lv > 0) placed.push(p);
+      const occ = s.userData.occ as { c: THREE.Vector3; r: number } | undefined;
+      const wp = s.getWorldPosition(new THREE.Vector3());
+      let lv: number;
+      if (occ) {
+        const c = occ.c.clone().applyMatrix4(this.group.matrixWorld);
+        lv = limbVisibility(this.camera.position.clone().sub(c), wp.sub(c), occ.r);
+      } else lv = limbVisibility(this.camera.position, wp, RADIUS);
+      // 0.20.0 late-game crowding: a label on top of an earlier one is hidden (not just dimmed)
+      s.visible = lv > 0 && !hitLab;
+      (s.material as THREE.SpriteMaterial).opacity = (hitPin ? 0.18 : 1) * lv;
+      const badge = s.userData.badge as THREE.Sprite | undefined;
+      if (badge) { badge.visible = s.visible; (badge.material as THREE.SpriteMaterial).opacity = (s.material as THREE.SpriteMaterial).opacity; }
+      if (!hitPin && !hitLab && lv > 0) placed.push(p);
     }
   }
 

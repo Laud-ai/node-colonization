@@ -9,7 +9,7 @@ import { ruleNum, ruleOn } from "./rules.js";
 import { extras, rp, freeLines, colonyLevel } from "./nodes.js";
 import { lineCanServeTrade, reachSupports, reachForBody, isVitalNeed, pickExportLine } from "./trade.js";
 import { isIndependent, INDEPENDENT_PATRON, canSendTrojan, trojanSendFreeLines, executeTrojanSend } from "./l3.js";
-import { sameNation } from "./nation.js";
+import { sameNation, beltReachOf } from "./nation.js";
 import {
   pushLog, friendlyColonies, opponentColonies, assistsColony, socialAffinity, findLine, clearRouteOnLine,
   lendableLines, lendLogisticsLine, returnLentLine, grantColonyImport, afterColonyAction, develop, makeColony,
@@ -44,9 +44,14 @@ export function relayCandidates(G: GameState, taker: Colony, node: NodeType): { 
     if (giver.id === taker.id) continue;
     for (const line of giver.logisticsLines) {
       const r = line.route;
-      if (!r || r.sourceKind !== "earth" || r.node !== node || r.earthCycle || line.relayTo) continue;
-      if (line.kind === "borrowed" || line.lentTo || line.trojanSend) continue;
-      if (!reachSupports(line.reach ?? reachForBody(giver.body), giver.body, taker.body)) continue;
+      // 0.20.0 chain: a Mars colony holding a relay of an Earth good may pass it on once more to the belt
+      const chain = !!line.relay && giver.body === "Mars" && taker.body === "Belt";
+      if (!r || (r.sourceKind !== "earth" && !chain) || r.node !== node || r.earthCycle || line.relayTo) continue;
+      if ((line.kind === "borrowed" && !chain) || line.lentTo || line.trojanSend) continue;
+      const beltOk = taker.body === "Belt" || giver.body === "Belt" ? beltReachOf(G, giver) : false;
+      // the belt leg is flown by the Mars giver itself (its Thrust), whatever the reach of the line it relays
+      const reach = taker.body === "Belt" ? reachForBody(giver.body) : line.reach ?? reachForBody(giver.body);
+      if (!reachSupports(reach, giver.body, taker.body, beltOk)) continue;
       if (!partnerOk(G, giver, taker)) continue;
       out.push({ giver, line });
     }
@@ -61,7 +66,7 @@ export function relayCandidates(G: GameState, taker: Colony, node: NodeType): { 
 export function tryRelay(G: GameState, taker: Colony, node: NodeType, rng: Rng): boolean {
   if (!on(G, "relayLines") || node === "Logistics") return false;
   // AI asks for a relay only for its Requires (a develop), a vital need, or Earth goods on Mars (no direct Earth trade)
-  if (node !== taker.requires && !isVitalNeed(taker, node) && taker.body !== "Mars") return false;
+  if (node !== taker.requires && !isVitalNeed(taker, node) && taker.body !== "Mars" && taker.body !== "Belt") return false;
   const cand = relayCandidates(G, taker, node)[0];
   if (!cand) return false;
   const { giver, line } = cand;
@@ -70,7 +75,8 @@ export function tryRelay(G: GameState, taker: Colony, node: NodeType, rng: Rng):
   if (isVitalNeed(taker, node)) route.vital = true;
   taker.logisticsLines.push({
     id, name: `relay via ${giver.name}`, kind: "borrowed", sourceLabel: giver.name, route, exportRoute: null, lentTo: null,
-    reach: line.reach ?? reachForBody(giver.body), borrowedFrom: { colonyId: giver.id, lineId: line.id }, relay: true,
+    reach: taker.body === "Belt" ? "belt" : line.reach ?? reachForBody(giver.body), borrowedFrom: { colonyId: giver.id, lineId: line.id }, relay: true,
+    ...(taker.body === "Belt" ? { beltOk: true } : {}),
   });
   line.relayTo = { colonyId: taker.id, lineId: id, colonyName: taker.name };
   pushLog(G, `🔁 ${giver.name} relays Earth ${node} (${line.route!.sourceName}) on to ${taker.name}.`, true);
@@ -89,8 +95,11 @@ export function dropRelay(G: GameState, giverLine: LogisticsLine): void {
   if (!taker) return;
   const idx = taker.logisticsLines.findIndex((l) => l.id === rt.lineId);
   if (idx < 0) return;
-  const node = taker.logisticsLines[idx]!.route?.node;
-  taker.logisticsLines.splice(idx, 1);
+  const tl = taker.logisticsLines[idx]!;
+  const node = tl.route?.node;
+  if (tl.relayTo) dropRelay(G, tl); // 0.20.0 chained relay (Moon → Mars → Belt)
+  const idx2 = taker.logisticsLines.indexOf(tl);
+  if (idx2 >= 0) taker.logisticsLines.splice(idx2, 1);
   pushLog(G, `🔁 Relay of ${node ?? "?"} to ${taker.name} ends.`, true);
 }
 
@@ -110,13 +119,13 @@ export function sweepCrises(G: GameState): void {
       if (!l.relay) continue;
       const g = l.borrowedFrom ? col(G, l.borrowedFrom.colonyId) : undefined;
       const gl = g ? findLine(g, l.borrowedFrom!.lineId) : undefined;
-      const ok = !!l.route && !!gl && gl.route?.sourceKind === "earth" && gl.route.node === l.route.node && gl.relayTo?.lineId === l.id;
+      const ok = !!l.route && !!gl && (gl.route?.sourceKind === "earth" || !!gl.relay) && gl.route?.node === l.route.node && gl.relayTo?.lineId === l.id;
       if (!ok) { c.logisticsLines.splice(i, 1); if (gl?.relayTo?.lineId === l.id) gl.relayTo = null; }
     }
     for (const l of c.logisticsLines) {
       if (!l.relayTo) continue;
       const t = col(G, l.relayTo.colonyId);
-      if (!t || !t.logisticsLines.some((x) => x.id === l.relayTo!.lineId) || l.route?.sourceKind !== "earth") l.relayTo = null;
+      if (!t || !t.logisticsLines.some((x) => x.id === l.relayTo!.lineId) || (l.route?.sourceKind !== "earth" && !l.relay)) l.relayTo = null;
     }
     if (c.fervorEvents?.length) c.fervorEvents = c.fervorEvents.filter((e) => e.until >= G.turn);
     if (c.casusBelli?.length) c.casusBelli = c.casusBelli.filter((e) => e.until >= G.turn);

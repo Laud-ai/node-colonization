@@ -60,7 +60,7 @@ export function importedLogisticsCount(c: Colony): number {
 }
 
 export function extras(c: Colony, n: NodeType): number {
-  let t = (c.specialty === n ? 1 : 0) + (c.developed[n] || 0) + activeImportCount(c, n);
+  let t = (c.specialty === n ? (c.beltRich ? 2 : 1) : 0) + (c.developed[n] || 0) + activeImportCount(c, n);
   if (n === "Logistics") t += importedLogisticsCount(c);
   return t;
 }
@@ -189,9 +189,9 @@ export function rp(c: Colony, bodyTF: Record<Body, number>): number {
 export function logiAvail(c: Colony): number { return freeLineCount(c); }
 export function logiCap(c: Colony): number { return c.logisticsLines.length; }
 export function bodyModFor(_b: Body): number { return 0; }
-export function bodyLabel(body: Body): string { return body === "Moon" ? "Lunar" : "Mars"; }
+export function bodyLabel(body: Body): string { return body === "Moon" ? "Lunar" : body === "Belt" ? "Belt" : "Mars"; }
 /** Body adjective for colony names: Moon→Lunar, Mars→Martian. */
-export function bodyAdj(body: Body): string { return body === "Moon" ? "Lunar" : "Martian"; }
+export function bodyAdj(body: Body): string { return body === "Moon" ? "Lunar" : body === "Belt" ? "Belter" : "Martian"; }
 
 /** Deps of developed node n that are under-covered under stacking rules. */
 export function missingDepsOf(c: Colony, n: NodeType): NodeType[] {

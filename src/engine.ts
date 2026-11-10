@@ -65,6 +65,7 @@ import {
   applySolarBlocParams, solarBlocParamsOf, solarBlocMinTurn,
   DEFAULT_SOLAR_BLOC_PARAMS, LEGACY_SOLAR_BLOC_PARAMS,
   type SolarBlocParams,
+  beltReachOf,
 } from "./nation.js";
 import {
   bindV080, tryFeedNewColony, tryRelationFoundSolarBloc, maybeVitalRouteCuts,
@@ -265,6 +266,13 @@ export function makeColony(G: GameState, cfg: {
   culture: string[]; ideology: string[]; name?: string; liegeId?: string | null;
   rng?: Rng;
 }): Colony {
+  // 0.20.0 asteroid mining: belt colonies favour Thrust / Production / Resources / Logistics (specialty ×2)
+  const beltRich = cfg.body === "Belt" && !!G.rules && ruleOn(G, "beltRichSpecialty");
+  if (beltRich) {
+    const opts: NodeType[] = ["Thrust", "Production", "Resources", "Logistics"];
+    const sp = cfg.rng ? pick(cfg.rng, opts) : opts[G.nextColonyId % opts.length]!;
+    cfg = { ...cfg, specialty: sp, requires: cfg.requires === sp ? "Oxygen" : cfg.requires };
+  }
   const c: Colony = {
     id: `c${G.nextColonyId++}`,
     name: cfg.name ?? nextColonyName(G, {
@@ -289,6 +297,7 @@ export function makeColony(G: GameState, cfg: {
     developed: emptyNodes(), logisticsLines: [], nextLineId: 1, acted: false,
     foodClock: 0, waterClock: 0, oxygenClock: 0, populationStress: 0, militaryTokenBurned: false,
   };
+  if (beltRich) c.beltRich = true;
   c.logisticsLines.push(makeBaseLine(c));
   // Logistics specialty starts with a second free specialty line (counts toward RP once).
   if (cfg.specialty === "Logistics") {
@@ -309,7 +318,7 @@ export function createGame(seed: number, rng?: Rng): GameState {
   const r = rng ?? mulberry32(seed);
   const gameMode: GameMode = "random";
   const G: GameState = {
-    turn: 1, seed, gameMode, blocs: [], colonies: [], bodyTF: { Moon: 0, Mars: 0 },
+    turn: 1, seed, gameMode, blocs: [], colonies: [], bodyTF: { Moon: 0, Mars: 0, Belt: 0 },
     log: [], nameSerial: {}, nextColonyId: 1, pendingFoundings: [], turnAnnouncements: [],
     alliancePressure: {}, lastFoundTurn: -999, lastSolarBlocTurn: -999,
     independenceThreshold: DEFAULT_INDEPENDENCE_THRESHOLD,
@@ -554,7 +563,9 @@ export function develop(G: GameState, c: Colony, rng: Rng): void {
     pushLog(G, `${c.name} opens logistics works (+1 line).`);
   }
   c.requires = pick(rng, NODES.filter((n) => n !== got));
-  if (got === "Terraforming") {
+  if (got === "Terraforming" && c.body === "Belt") {
+    pushLog(G, `${c.name} develops Terraforming, but the Belt holds no atmosphere (no effect).`);
+  } else if (got === "Terraforming") {
     G.bodyTF[c.body] = (G.bodyTF[c.body] || 0) + 1;
     pushLog(G, `${c.name} terraforms ${c.body}. Body quality is now ${G.bodyTF[c.body]}.`, true);
   }
@@ -957,6 +968,7 @@ export function lendLogisticsLine(
     reach: line.reach ?? reachForBody(lender.body),
     borrowedFrom: { colonyId: lender.id, lineId: line.id },
   };
+  if (line.beltOk) borrowed.beltOk = true; // 0.20.0: Thrust reach travels with the lent line
   borrower.logisticsLines.push(borrowed);
   pushLog(G, `${lender.name} lends ${line.name} to ${borrower.name} (via [${lender.name}] Logistics).`, true);
   return borrowed;
@@ -1188,6 +1200,7 @@ export function cancelLogisticsImport(G: GameState, actor: Colony, lineId: strin
 /** Raw sources (availability only; no East/West or Subversion filters). */
 /** 0.18.0 `marsMoonOnlyImports`: Mars colonies never trade with Earth directly. */
 export function marsEarthless(G: GameState, c: Colony): boolean {
+  if (c.body === "Belt") return true; // 0.20.0: the belt imports only from Mars
   return c.body === "Mars" && !!G.rules && ruleOn(G, "marsMoonOnlyImports");
 }
 
@@ -1373,6 +1386,7 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
   if (actor.acted) return;
   (G as unknown as { __actTrace?: { turn: number; id: string; rp: number; level: number }[] }).__actTrace
     ?.push({ turn: G.turn, id: actor.id, rp: rp(actor, G.bodyTF), level: colonyLevel(actor) });
+  refreshBeltReach(G); // 0.20.0 Thrust reach (lines → belt)
   // 0.19.0: nomad camps only raid / settle
   if (actor.nomad) { crises.campAct(G, actor, rng); actor.acted = true; return; }
   // 0.8.2: cancel prior-turn earthCycle probes so Earth excess rerolls
@@ -1710,9 +1724,39 @@ export function earthSpontaneous(G: GameState, rng: Rng): void {
   }
 }
 
+/** 0.20.0 Thrust = line reach: mark which lines reach the belt (owner, or lender for lent/relayed lines, has belt Thrust). */
+export function refreshBeltReach(G: GameState): void {
+  if (!G.rules || !ruleOn(G, "beltColonies")) return;
+  const ok = new Map(G.colonies.map((c) => [c.id, beltReachOf(G, c)]));
+  for (const c of G.colonies) {
+    for (const l of c.logisticsLines) {
+      const owner = l.kind === "borrowed" && l.borrowedFrom ? l.borrowedFrom.colonyId : c.id;
+      // a belt colony's base line is the founding ship: it always reaches Mars
+      const v = (c.body === "Belt" && l.kind === "base") || (ok.get(owner) ?? false);
+      if (v) l.beltOk = true; else if (l.beltOk) delete l.beltOk;
+    }
+  }
+}
+/** 0.20.0 milestone: an Earth bloc's first belt colony gives the bloc + tech. */
+function beltMilestones(G: GameState): void {
+  if (!G.rules || !ruleOn(G, "beltColonies") || !ruleOn(G, "beltMilestone")) return;
+  for (const c of G.colonies) {
+    if (c.body !== "Belt" || c.nomad || isIndependent(c)) continue;
+    const done = (G.beltMilestones ??= []);
+    if (done.includes(c.patron)) continue;
+    done.push(c.patron);
+    const b = blocByName(G, c.patron);
+    const bonus = ruleNum(G, "beltMilestoneTech");
+    if (b) b.tech += bonus;
+    pushLog(G, `🚀 BELT MILESTONE: ${c.patron} reaches the asteroid belt with ${c.name} (+${bonus} bloc tech).`, true);
+    G.turnAnnouncements.push(`${c.patron} reaches the asteroid belt (+${bonus} tech).`);
+  }
+}
+
 export function cleanup(G: GameState, _rng?: Rng): void {
   returnIdleBorrowedLines(G);
   crises.sweepCrises(G);
+  beltMilestones(G);
   for (const c of G.colonies) {
     c.acted = false;
     c.lendAttemptsThisTurn = 0;
@@ -1722,7 +1766,7 @@ export function cleanup(G: GameState, _rng?: Rng): void {
 function flushFoundings(G: GameState): void {
   G.turnAnnouncements = [];
   for (const f of G.pendingFoundings) {
-    const bodyName = f.body === "Moon" ? "the Moon" : "Mars";
+    const bodyName = f.body === "Moon" ? "the Moon" : f.body === "Belt" ? "the asteroid belt" : "Mars";
     const msg = `${f.patron} founded ${f.colonyName} on ${bodyName}.`;
     G.turnAnnouncements.push(msg);
     pushLog(G, msg, true);

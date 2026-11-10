@@ -755,9 +755,11 @@ th {
 .globe-modes button { padding: 3px 10px; font-size: 12px; }
 .globe-modes button.selected { outline: 1px solid #2ee9f0; color: #2ee9f0; }
 .globe-wrap { display: grid; gap: 8px; height: 400px; }
-.globe-wrap.mode-both { grid-template-columns: 1fr 1fr; }
-.globe-wrap.mode-moon, .globe-wrap.mode-mars { grid-template-columns: 1fr; height: 520px; }
-.globe-wrap.mode-moon #globeMars, .globe-wrap.mode-mars #globeMoon { display: none; }
+.globe-wrap.mode-both { grid-template-columns: 1fr 1fr 1fr; }
+.globe-wrap.mode-moon, .globe-wrap.mode-mars, .globe-wrap.mode-belt { grid-template-columns: 1fr; height: 520px; }
+.globe-wrap.mode-moon #globeMars, .globe-wrap.mode-mars #globeMoon,
+.globe-wrap.mode-moon #globeBelt, .globe-wrap.mode-mars #globeBelt,
+.globe-wrap.mode-belt #globeMoon, .globe-wrap.mode-belt #globeMars { display: none; }
 .globe-slot { position: relative; min-width: 0; border-radius: 6px; overflow: hidden; background: #05070d; }
 .globe-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .globe-label { position: absolute; left: 10px; top: 8px; font: 600 11px/1 monospace; letter-spacing: 0.2em; color: #9fb3c8; pointer-events: none; }
@@ -767,6 +769,13 @@ th {
 .globe-credit { margin-top: 4px; font-size: 10px; opacity: 0.7; }
 @media (max-width: 800px) { .globe-wrap.mode-both { grid-template-columns: 1fr; height: 640px; } }
 .pin-legend { font-size: 11px; opacity: 0.8; margin: 0 0 6px; }
+/* 0.20.0 map legend window */
+.map-legend h3 { margin: 8px 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); }
+.map-legend h3:first-child { margin-top: 0; }
+.legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 2px 0; }
+.legend-pin { width: 40px; height: 40px; flex: 0 0 40px; }
+.legend-route { width: 60px; height: 25px; flex: 0 0 60px; }
+.legend-need { flex: 0 0 64px; text-align: center; font-size: 11px; font-weight: 700; padding: 2px 0; border-radius: 4px; }
 
 /* 0.14.0 — map-first layout with side windows */
 .play-screen.map-first { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -782,8 +791,8 @@ th {
 .dock-right { border-left: 1px solid var(--line); }
 .map-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .map-stage .globe-card { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 6px; }
-.map-stage .globe-wrap, .map-stage .globe-wrap.mode-moon, .map-stage .globe-wrap.mode-mars { flex: 1; min-height: 260px; height: auto; }
-.map-stage .announcements { position: absolute; top: 48px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 70%; }
+.map-stage .globe-wrap, .map-stage .globe-wrap.mode-moon, .map-stage .globe-wrap.mode-mars, .map-stage .globe-wrap.mode-belt { flex: 1; min-height: 260px; height: auto; }
+.map-stage .announcements { position: absolute; top: 48px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 70%; pointer-events: none; } /* 0.20.0: banners never block the globe bar (wraps to 2 rows with Belt + Legend) */
 .win { flex-shrink: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; }
 .win-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; background: var(--panel2); border-radius: 8px 8px 0 0; cursor: default; }
 .win-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold); }

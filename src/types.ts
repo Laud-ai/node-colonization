@@ -1,8 +1,8 @@
 export type Alliance = "West" | "East" | "Neutral";
-export type Body = "Moon" | "Mars";
+export type Body = "Moon" | "Mars" | "Belt";
 
 /** Logistics reach theater (0.7.1). */
-export type LineReach = "earth" | "moon" | "mars";
+export type LineReach = "earth" | "moon" | "mars" | "belt";
 
 export type NodeType =
   | "Resources" | "Infrastructure" | "Water" | "Oxygen" | "Food" | "Energy"
@@ -93,6 +93,8 @@ export interface LogisticsLine {
   relayTo?: { colonyId: string; lineId: string; colonyName: string } | null;
   /** 0.19.0 relay: receiving side (kind "borrowed", route sourced from the relaying colony). */
   relay?: boolean;
+  /** 0.20.0 Thrust reach: this line can reach the asteroid belt (owner — or lender — has enough Thrust). Refreshed each action. */
+  beltOk?: boolean;
   /** @deprecated 0.8.3 — use trojanSend reverse-logistics instead. */
   trojanExport?: boolean;
   /**
@@ -171,6 +173,8 @@ export interface Colony {
   fervorEvents?: FervorEvent[];
   /** 0.19.0: this colony is a nomad camp (weak, bloc-less, raids those who refused it). */
   nomad?: NomadCamp | null;
+  /** 0.20.0: belt colony whose (belt) specialty yields 2 instead of 1 (asteroid mining). */
+  beltRich?: boolean;
   /** L4: Population stress when refugees flee with no Population extra. */
   populationStress?: number;
   /** 0.9.4 last refugee emission turn (per-colony cooldown). */
@@ -224,6 +228,8 @@ export interface GameState {
   nameSerial: Record<string, number>;
   nextColonyId: number;
   pendingFoundings: FoundingAnnouncement[];
+  /** 0.20.0 Earth blocs that already got the first-belt-colony milestone. */
+  beltMilestones?: string[];
   turnAnnouncements: string[];
   /** Hysteresis counters for alliance softening/flip (bloc name → streak). */
   alliancePressure?: Record<string, number>;

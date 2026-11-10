@@ -9,7 +9,7 @@ interface WinLayout { side: Side; state: WinState; order: number }
 const KEY = "nc.layout.v1";
 const DEFAULT_STATE: Record<string, WinState> = {
   needs: "open", suppliers: "min", moves: "open", blocs: "min", independents: "min", game: "min",
-  selected: "open", colonies: "open", log: "min", map: "min",
+  selected: "open", colonies: "open", log: "min", map: "min", legend: "min",
 };
 
 let layout: Record<string, WinLayout> = {};

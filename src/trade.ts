@@ -29,11 +29,11 @@ export const EAST_IDEOLOGIES = new Set([
 export const WEST_CULTURES = new Set(["American", "Corporate American", "European", "Commonwealth"]);
 export const EAST_CULTURES = new Set(["Chinese", "Corporate Chinese", "Russian"]);
 
-export function reachForBody(body: Body): "earth" | "moon" | "mars" {
-  return body === "Moon" ? "moon" : "mars";
+export function reachForBody(body: Body): "earth" | "moon" | "mars" | "belt" {
+  return body === "Moon" ? "moon" : body === "Belt" ? "belt" : "mars";
 }
 
-export function reachForLogisticsImport(source: TradeSourceLike): "earth" | "moon" | "mars" {
+export function reachForLogisticsImport(source: TradeSourceLike): "earth" | "moon" | "mars" | "belt" {
   if (source.kind === "earth") return "earth";
   return reachForBody(source.colony.body);
 }
@@ -45,10 +45,18 @@ export function reachForLogisticsImport(source: TradeSourceLike): "earth" | "moo
  * - mars:  Moon↔Mars and Mars-local — never Earth↔Moon
  */
 export function reachSupports(
-  reach: "earth" | "moon" | "mars",
+  reach: "earth" | "moon" | "mars" | "belt",
   from: "Earth" | Body,
-  to: Body
+  to: Body,
+  /** 0.20.0 Thrust reach of the line (owner/lender Thrust ≥ threshold, or a depot). */
+  beltOk = false,
 ): boolean {
+  // 0.20.0 asteroid belt: only Mars ↔ Belt, on a Mars/Belt line with Thrust reach (never Earth/Moon, never Belt↔Belt)
+  if (from === "Belt" || to === "Belt") {
+    const other = from === "Belt" ? to : from;
+    return other === "Mars" && (reach === "mars" || reach === "belt") && beltOk;
+  }
+  if (reach === "belt") reach = "mars"; // a belt line lent inward behaves like a Mars line
   if (from === "Earth") {
     if (to === "Moon") return reach === "earth" || reach === "moon";
     // Mars may only import Earth on an Earth-sourced line
@@ -84,7 +92,7 @@ export function lineCanServeTrade(
   if (line.lentTo) return false;
   const reach = line.reach ?? reachForBody(actor.body);
   const { from, to } = tradeEndpoints(actor, source);
-  return reachSupports(reach, from, to);
+  return reachSupports(reach, from, to, !!line.beltOk);
 }
 
 /** Exporter line must cover the same body pair from the exporter's perspective. */
@@ -96,7 +104,7 @@ export function lineCanServeExport(
   if (line.lentTo) return false;
   if (line.kind === "borrowed") return false;
   const reach = line.reach ?? reachForBody(exporter.body);
-  return reachSupports(reach, exporter.body, importer.body);
+  return reachSupports(reach, exporter.body, importer.body, true); // 0.20.0: the importer's line carries the Thrust reach
 }
 
 export function isVitalNeed(actor: Colony, node: NodeType): boolean {

@@ -6,6 +6,7 @@ import type { GlobeMarker, GlobeRoute, GlobeView, MarkerStyle } from "./globe.js
 import { NODE_COLORS } from "../nodes.js";
 import { SPECIALTY_CODE } from "./pinIcon.js";
 import { initWindows, openWindow, isOpen } from "./windows.js";
+import { buildLegend } from "./legend.js";
 import { needsTreeHtml, suppliersHtml } from "./needsView.js";
 import type { NodeType } from "../types.js";
 import {
@@ -263,7 +264,8 @@ function renderSolarMap(snap: UiSnapshot): void {
 }
 // --- 0.13.0 Moon / Mars globes (render reads the UI snapshot only) ---
 let sites: SiteBook | null = null;
-let globes: { Moon: GlobeView; Mars: GlobeView } | null = null;
+let globes: { Moon: GlobeView; Mars: GlobeView; Belt: GlobeView } | null = null;
+const allGlobes = (): GlobeView[] => (globes ? [globes.Moon, globes.Mars, globes.Belt] : []);
 let globesLoading = false;
 let markerStyle: MarkerStyle = (() => { try { return localStorage.getItem("nc.markerStyle") === "glyph" ? "glyph" : "pin"; } catch { return "pin"; } })();
 let showRoutes = (() => { try { return localStorage.getItem("nc.routes") !== "off"; } catch { return true; } })();
@@ -288,7 +290,7 @@ document.querySelector(".marker-styles")?.addEventListener("click", (e) => {
   markerStyle = btn.dataset.markerStyle === "glyph" ? "glyph" : "pin";
   try { localStorage.setItem("nc.markerStyle", markerStyle); } catch { /* private mode */ }
   syncStyleButtons();
-  globes?.Moon.setStyle(markerStyle); globes?.Mars.setStyle(markerStyle);
+  allGlobes().forEach((g) => g.setStyle(markerStyle));
 });
 function selectFromGlobe(id: string): void {
   if (!session) return;
@@ -303,8 +305,11 @@ function renderGlobes(snap: UiSnapshot): void {
       globesLoading = true;
       $("globeStatus").textContent = "Loading globes…";
       import("./globe.js").then(({ GlobeView }) => {
-        globes = { Moon: new GlobeView($("globeMoon"), "Moon", selectFromGlobe), Mars: new GlobeView($("globeMars"), "Mars", selectFromGlobe) };
-        globes.Moon.setStyle(markerStyle); globes.Mars.setStyle(markerStyle);
+        globes = {
+          Moon: new GlobeView($("globeMoon"), "Moon", selectFromGlobe), Mars: new GlobeView($("globeMars"), "Mars", selectFromGlobe),
+          Belt: new GlobeView($("globeBelt"), "Belt", selectFromGlobe),
+        };
+        allGlobes().forEach((g) => g.setStyle(markerStyle));
         $("globeStatus").textContent = "";
         if (session) renderGlobes(session.snapshot());
       }).catch((err: unknown) => {
@@ -317,7 +322,7 @@ function renderGlobes(snap: UiSnapshot): void {
   }
   if (!sites || sites.seed !== snap.seed) sites = new SiteBook(snap.seed);
   const placed = sites.place(snap.colonies.map((c) => ({ id: c.id, body: c.body })));
-  const by: Record<"Moon" | "Mars", GlobeMarker[]> = { Moon: [], Mars: [] };
+  const by: Record<"Moon" | "Mars" | "Belt", GlobeMarker[]> = { Moon: [], Mars: [], Belt: [] };
   for (const c of snap.colonies) {
     const site = placed.get(c.id)!;
     const ideo = c.ideology.length ? c.ideology.join(" / ") : "—";
@@ -337,13 +342,13 @@ function renderGlobes(snap: UiSnapshot): void {
     if (c.atWar) alerts.push(c.proxyAgitation > 0 ? `proxy war (agitation ${c.proxyAgitation})` : "invasion");
     if (fresh) alerts.push("founded this turn");
     by[c.body].push({
-      id: c.id, lat: site.lat, lon: site.lon, level: c.level, color: c.nationColor || "#64748b",
+      id: c.id, lat: site.lat, lon: site.lon, rock: site.rock, level: c.level, color: c.nationColor || "#64748b",
       independent: c.independent, fervor: c.independent ? null : Math.max(0, c.fervor) / thr,
       specialty: c.specialty, alert: need, war: c.atWar, fresh, o2Crisis: !!c.oxygenCrisis, camp: !!c.camp, hoarder: !!c.hoarderUntil,
       flagSvg: flagDesignToSvg(c.flag, 30, 20),
       info: [
         c.name,
-        `L${c.level} · ${c.body} · ${c.independent ? "Independent" : c.patron}`,
+        `L${c.level} · ${c.body === "Belt" ? `Belt (${site.rock ?? "?"})` : c.body} · ${c.independent ? "Independent" : c.patron}`,
         `Specialty ${c.specialty} (${SPECIALTY_CODE[c.specialty]}) · requires ${c.requires}`,
         `RP ${c.rp} · Nation RP ${c.nationRp}${c.independent ? "" : ` · Fervor ${c.fervor}/${thr}`}`,
         `Ideology: ${ideo}`,
@@ -353,8 +358,9 @@ function renderGlobes(snap: UiSnapshot): void {
   }
   globes.Moon.update(by.Moon, snap.selectedId);
   globes.Mars.update(by.Mars, snap.selectedId);
+  globes.Belt.update(by.Belt, snap.selectedId);
   // 0.14.1 trade routes on the bodies
-  const rt: Record<"Moon" | "Mars", GlobeRoute[]> = { Moon: [], Mars: [] };
+  const rt: Record<"Moon" | "Mars" | "Belt", GlobeRoute[]> = { Moon: [], Mars: [], Belt: [] };
   const fan = new Map<string, number>();
   const nextFan = (id: string) => { const n = fan.get(id) ?? 0; fan.set(id, n + 1); return n; };
   for (const r of snap.routes) {
@@ -374,21 +380,48 @@ function renderGlobes(snap: UiSnapshot): void {
     });
     if (r.fromKind === "colony" && r.fromBody !== "Earth") {
       const from = placed.get(r.fromId);
-      if (from) rt[r.fromBody as "Moon" | "Mars"].push({
+      if (from) rt[r.fromBody as "Moon" | "Mars" | "Belt"].push({
         id: r.id + ":out", kind: "outer", color, a: from, inbound: false, twoWay: !!r.counterNode, otherBody: r.toBody,
         flagSvg: flagDesignToSvg(r.toFlag, 30, 20), label: `${r.toName} · ${r.node}${counter}`, fanIndex: nextFan(r.fromId),
       });
     }
   }
-  globes.Moon.setRoutes(rt.Moon, showRoutes);
-  globes.Mars.setRoutes(rt.Mars, showRoutes);
+  globes.Moon.setRoutes(groupOuter(rt.Moon), showRoutes);
+  globes.Mars.setRoutes(groupOuter(rt.Mars), showRoutes);
+  globes.Belt.setRoutes(groupOuter(rt.Belt), showRoutes);
+}
+/**
+ * 0.20.0 late-game label crowding: outer routes of one colony to the same body in the same direction
+ * become one line + one partner label with a ×N badge; the tooltip lists every partner.
+ */
+function groupOuter(routes: GlobeRoute[]): GlobeRoute[] {
+  const out: GlobeRoute[] = [];
+  const groups = new Map<string, GlobeRoute>();
+  const fan = new Map<string, number>();
+  for (const r of routes) {
+    if (r.kind !== "outer") { out.push(r); continue; }
+    const key = `${r.a.lat},${r.a.lon}|${r.otherBody}|${r.inbound ? 1 : 0}`;
+    const g = groups.get(key);
+    if (g) {
+      g.count = (g.count ?? 1) + 1;
+      g.labels!.push(r.label ?? "");
+      g.twoWay = g.twoWay || r.twoWay;
+      continue;
+    }
+    const site = `${r.a.lat},${r.a.lon}`;
+    const fi = fan.get(site) ?? 0; fan.set(site, fi + 1);
+    const ng: GlobeRoute = { ...r, count: 1, labels: [r.label ?? ""], fanIndex: fi };
+    groups.set(key, ng);
+    out.push(ng);
+  }
+  return out;
 }
 document.querySelector(".globe-modes")?.addEventListener("click", (e) => {
   const btn = (e.target as HTMLElement).closest("[data-globe-mode]") as HTMLElement | null;
   if (!btn?.dataset.globeMode) return;
   document.querySelectorAll(".globe-modes [data-globe-mode]").forEach((b) => b.classList.toggle("selected", b === btn));
   $("globeWrap").className = `globe-wrap mode-${btn.dataset.globeMode}`;
-  globes?.Moon.refit(); globes?.Mars.refit();
+  allGlobes().forEach((g) => g.refit());
 });
 
 // --- 0.14.0 Needs tree + suppliers ---
@@ -717,7 +750,7 @@ $("colonies").addEventListener("click", (e) => {
   if (!t?.dataset.id) return;
   session.select(t.dataset.id);
   render();
-  if (globes) { globes.Moon.focus(t.dataset.id) || globes.Mars.focus(t.dataset.id); }
+  if (globes) { globes.Moon.focus(t.dataset.id) || globes.Mars.focus(t.dataset.id) || globes.Belt.focus(t.dataset.id); }
 });
 $("solarMap").addEventListener("click", (e) => {
   const id = (e.target as Element).getAttribute?.("data-id");
@@ -777,6 +810,9 @@ $("detail").addEventListener("focusout", (e) => {
 });
 
 initWindows(() => { if (uiPhase === "playing" && session) render(); });
+// 0.20.0 map legend window (built once from the real pin renderer + needs-tree styles)
+buildLegend($("mapLegend"));
+document.getElementById("btnLegend")?.addEventListener("click", () => openWindow("legend"));
 
 // Boot into setup lobby (do not auto-start a game).
 showPhase("setup");

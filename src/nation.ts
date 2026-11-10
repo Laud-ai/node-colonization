@@ -1,4 +1,4 @@
-import { hasThrustReach } from "./l5.js";
+import { hasThrustReach, thrustOf } from "./l5.js";
 import { ruleNum, ruleOn } from "./rules.js";
 /**
  * 0.8.0 — Nation identity: Earth blocs + Independent liege groups as nations/agents.
@@ -321,6 +321,32 @@ export function hasFriendlyMoonColony(G: GameState, patron: string, liegeId?: st
     || (!!all && all !== "Neutral" && !isIndependent(c) && G.blocs.find((b) => b.name === c.patron)?.alliance === all)));
 }
 
+/** 0.20.0: a and b are the same nation, or both in the same West/East alliance. */
+function friendlyNations(G: GameState, a: Colony, b: Colony): boolean {
+  if (sameNation(a, b)) return true;
+  if (isIndependent(a) || isIndependent(b)) return false;
+  const x = G.blocs.find((bl) => bl.name === a.patron)?.alliance, y = G.blocs.find((bl) => bl.name === b.patron)?.alliance;
+  return !!x && x !== "Neutral" && x === y;
+}
+/** 0.20.0 belt reach Thrust of a colony: own Thrust (+1 Orbital Shipyard) +1 if a friendly belt depot (belt colony with Thrust ≥ 1) exists. */
+export function beltThrust(G: GameState, c: Colony): number {
+  let t = thrustOf(c);
+  if (G.rules && ruleOn(G, "beltDepot")
+    && G.colonies.some((o) => o.id !== c.id && o.body === "Belt" && !o.nomad && thrustOf(o) >= 1 && friendlyNations(G, o, c))) t += 1;
+  return t;
+}
+export function beltReachOf(G: GameState, c: Colony): boolean {
+  return !!G.rules && ruleOn(G, "beltColonies") && beltThrust(G, c) >= ruleNum(G, "beltThrustReach");
+}
+/** 0.20.0 belt founding: a Mars colony of own nation or same-alliance nation (Neutral/Independent: own) with belt Thrust reach. */
+export function canFoundBelt(G: GameState, patron: string, liegeId?: string | null): boolean {
+  if (!G.rules || !ruleOn(G, "beltColonies")) return false;
+  const all = patron === INDEPENDENT_PATRON ? null : G.blocs.find((b) => b.name === patron)?.alliance;
+  return G.colonies.some((c) => c.body === "Mars" && !c.nomad && beltReachOf(G, c) && (
+    patron === INDEPENDENT_PATRON ? (!!liegeId && c.patron === INDEPENDENT_PATRON && (c.liegeId || c.id) === liegeId)
+      : c.patron === patron || (!!all && all !== "Neutral" && !isIndependent(c) && G.blocs.find((b) => b.name === c.patron)?.alliance === all)));
+}
+
 /** Mars founding allowed when strong lunar basis OR lunar ally feed. */
 export function canFoundMars(
   G: GameState,
@@ -345,9 +371,15 @@ export function foundingBodyFor(
   patron: string,
   socialAffinity: SocialAffinityFn,
   liegeId?: string | null
-): "Moon" | "Mars" {
+): "Moon" | "Mars" | "Belt" {
   if (!canFoundMars(G, patron, socialAffinity, liegeId)) return "Moon";
-  return moonColonyCount(G) < MOON_SOFT_CAP ? "Moon" : "Mars";
+  if (moonColonyCount(G) < MOON_SOFT_CAP) return "Moon";
+  // 0.20.0: with belt reach, settle the belt while it has fewer colonies than half of Mars
+  if (canFoundBelt(G, patron, liegeId)) {
+    const mars = G.colonies.filter((c) => c.body === "Mars").length, belt = G.colonies.filter((c) => c.body === "Belt").length;
+    if (belt < Math.max(1, Math.floor(mars / 2))) return "Belt";
+  }
+  return "Mars";
 }
 
 /** @deprecated use foundingBodyFor — global soft preference without nation gate */
