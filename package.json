@@ -1,9 +1,9 @@
 {
   "name": "node-colonization-l0",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "type": "module",
-  "description": "Node Colonization — L0–L7 + 3D Moon/Mars globes (0.13.0); rules/version lobby",
+  "description": "Node Colonization \u2014 L0\u2013L7 + 3D Moon/Mars globes (0.13.0); rules/version lobby",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5174",
     "build": "tsc --noEmit && vite build",
@@ -16,7 +16,8 @@
     "sim:clocks": "tsx src/clockProbe.ts",
     "sim:passes": "tsx src/passProbe.ts",
     "snapshot": "node scripts/snapshot.mjs",
-    "smoke": "npm run build && playwright test"
+    "smoke": "npm run build && playwright test",
+    "sim:blocs": "tsx src/blocProbe.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",

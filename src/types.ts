@@ -138,6 +138,12 @@ export interface Colony {
   originPatron?: string;
   /** Turn this colony was founded (for min-age independence gate). */
   foundedTurn?: number;
+  /** 0.21.0 daughter colonies: the parent colony id (lineage). */
+  parentId?: string;
+  /** 0.21.0 how it was founded: "pressure" | "wave" | "first" | "daughter" | "tech" … */
+  foundTags?: string[];
+  /** 0.21.0 last turn this colony seeded a daughter. */
+  lastDaughterTurn?: number;
   /** Lend attempts this turn (max 1 — 0.8.0). */
   lendAttemptsThisTurn?: number;
   /** Optional display name for solar bloc when this colony is liege (0.8.0). */
@@ -251,4 +257,57 @@ export interface GameState {
   rules?: Record<string, number | boolean>;
   /** L7 last Earth overturn turn. */
   lastOverturnTurn?: number;
+  /** 0.21.0 colonization pressure meter per Earth bloc (rule `colonizationWaves`). */
+  pressure?: Record<string, number>;
+  /** 0.21.0 active first-founding waves per bloc (rule `firstFoundingWave`). */
+  waves?: Record<string, ColonizationWave>;
+  /** 0.21.0 colonies ever founded per Earth bloc (pressure threshold growth; revolutions don't reset it). */
+  blocFounded?: Record<string, number>;
+  /** 0.21.0 internal: colony ids already counted in blocFounded. */
+  __seenColonies?: Set<string>;
+  /** 0.21.0 turn of the last daughter colony (one per turn system-wide). */
+  daughterTurn?: number;
+  /** 0.21.0 foundings per bloc this turn (per-bloc per-turn cap). */
+  foundThisTurn?: Record<string, number>;
+  /** 0.21.0 deterministic event record (rule `eventLog`) — source for History, 0.21.1 Lineage + cluster replay. */
+  events?: GameEvent[];
+  /** 0.21.0 per-turn relation snapshots (compact) for the 0.21.1 replayable cluster graph. */
+  timeline?: TurnSnapshot[];
+  /** 0.21.0 internal: log index already classified into events. */
+  __eventLogIdx?: number;
+  /** 0.21.0 internal: explicit identity events this turn ("turn|id|kind"). */
+  __identityMarks?: Set<string>;
+  /** 0.21.0 internal: colonies in a war / seizure this turn (snapshot flag). */
+  __warThisTurn?: Set<string>;
+}
+
+/** 0.21.0 first-founding wave: cheap / fast founding on `body` until `until`. */
+export interface ColonizationWave { body: Body; start: number; until: number; strength: number; founded: number; trigger: string }
+
+export type GameEventType =
+  | "found" | "lost" | "war" | "seize" | "o2" | "raid" | "camp" | "allianceShift" | "patronChange"
+  | "independence" | "revolution" | "annex" | "ideology" | "culture" | "wave" | "milestone";
+/**
+ * 0.21.0 event record. Deterministic (no RNG, derived from sim state + stable log markers).
+ * `colonies` = colony ids involved (actor first), `blocs` = Earth blocs involved.
+ * `parents` (ideology / culture blends) lets 0.21.1 draw the Lineage tree; `parentColony` links daughters.
+ */
+export interface GameEvent {
+  seq: number; turn: number; type: GameEventType;
+  colonies: string[]; blocs: string[];
+  /** colony names at the time (aligned with `colonies`). */
+  names: string[];
+  tags?: string[];
+  before?: Record<string, string | number | string[] | null>;
+  after?: Record<string, string | number | string[] | null>;
+  parents?: string[];
+  parentColony?: string;
+  /** Short template text (no AI) — History tab sentence source. */
+  text: string;
+}
+/** 0.21.0 compact per-turn relation snapshot (end of turn). */
+export interface TurnSnapshot {
+  turn: number;
+  alliances: Record<string, string>;
+  cols: { id: string; name: string; patron: string; liege: string | null; body: Body; level: number; ideology: string[]; culture: string[]; trade: string[]; war: boolean }[];
 }

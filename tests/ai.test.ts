@@ -111,7 +111,8 @@ test("0.17.1 fewer passes than 0.17.0 AI on a real game (seed 42, 40 turns)", ()
     return pt.length;
   };
   // 0.19.0 crisis rules pinned off on both sides: this test isolates the 0.17.1 AI rules
-  const off019 = { relayLines: false, oxygenWars: false, nomadCamps: false, thinAirOxygen: false };
+  const off019 = { relayLines: false, oxygenWars: false, nomadCamps: false, thinAirOxygen: false,
+    colonizationWaves: false, firstFoundingWave: false, daughterColonies: false };
   const old = passes({ ...off019, aiTurnOrderRp: false, aiSpreadDevelop: false, aiActiveEarth: false });
   const now = passes(off019);
   assert.ok(now < old * 0.8, `passes ${now} vs ${old}`);

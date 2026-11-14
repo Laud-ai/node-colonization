@@ -850,3 +850,16 @@ th {
 .fg-arrow { color: #F2A541; font-size: 22px; }
 .fg-smallgrid { display: inline-grid; grid-template-columns: repeat(16, 24px); gap: 8px; padding: 12px; background: #111822; border: 1px solid #2A3A4D; }
 .fg-smallgrid svg { display: block; }
+
+/* 0.21.0 colony History tab */
+.detail-tabs { display: flex; gap: 4px; margin-bottom: 6px; border-bottom: 1px solid #334155; }
+.detail-tabs button { background: transparent; border: 1px solid transparent; border-bottom: none; color: #94a3b8; padding: 3px 10px; cursor: pointer; border-radius: 4px 4px 0 0; }
+.detail-tabs button.on { color: #e2e8f0; border-color: #334155; background: #1e293b; }
+.history-era { margin: 6px 0 10px; padding-left: 8px; border-left: 3px solid #475569; }
+.history-era h4 { margin: 0 0 4px; font-size: 0.95em; color: #e2e8f0; }
+.history-era ol { list-style: none; margin: 0; padding: 0; }
+.history-era li { margin: 2px 0; font-size: 0.9em; line-height: 1.35; padding-left: 3.2em; text-indent: -3.2em; }
+.history-turn { display: inline-block; min-width: 3.2em; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.history-era li[data-ev="revolution"], .history-era li[data-ev="independence"], .history-era li[data-ev="war"], .history-era li[data-ev="seize"] { color: #fca5a5; }
+.history-era li[data-ev="found"], .history-era li[data-ev="wave"] { color: #86efac; }
+.history-era li[data-ev="ideology"], .history-era li[data-ev="culture"] { color: #c4b5fd; }

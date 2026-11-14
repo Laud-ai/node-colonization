@@ -516,10 +516,31 @@ function editableChip(label: string, kind: string, index: number, colonyId: stri
     title="Edit · Enter or blur to save">${esc(label)}</span>`;
 }
 
+let detailTab: "details" | "history" = "details";
+function renderHistory(snap: UiSnapshot): string {
+  if (!snap.eventLog) return `<div class="tags" data-history-empty>History is off (Rules → History → Event log).</div>`;
+  const eras = snap.selectedHistory;
+  if (!eras.length) return `<div class="tags" data-history-empty>No history yet — end a turn to start the chronicle.</div>`;
+  return `<div class="history" data-history>${eras.map((era) => `
+    <section class="history-era" data-era>
+      <h4>${esc(era.title)} <span class="tags">T${era.from}${era.to !== era.from ? `–T${era.to}` : ""}</span></h4>
+      ${era.entries.length ? `<ol>${era.entries.map((e) => `<li data-ev="${esc(e.type)}"><span class="history-turn">T${e.turn}</span> ${esc(e.text)}</li>`).join("")}</ol>`
+        : `<div class="tags">Quiet years.</div>`}
+    </section>`).join("")}</div>`;
+}
 function renderDetail(snap: UiSnapshot): void {
   const el = $("detail");
   const sel = snap.selected;
   if (!sel) { el.textContent = "Select a colony."; return; }
+  const tabBar = `<div class="detail-tabs" role="tablist">
+    <button type="button" role="tab" data-detail-tab="details" class="${detailTab === "details" ? "on" : ""}" aria-selected="${detailTab === "details"}">Details</button>
+    <button type="button" role="tab" data-detail-tab="history" class="${detailTab === "history" ? "on" : ""}" aria-selected="${detailTab === "history"}">History</button>
+  </div>`;
+  if (detailTab === "history") {
+    el.innerHTML = `${tabBar}<div class="detail-head"><div class="name">${esc(sel.name)} <span class="rp">Level ${sel.level}</span></div>
+      <div class="tags">${esc(sel.patron)} · ${esc(sel.body)}</div></div>${renderHistory(snap)}`;
+    return;
+  }
   const group = (title: string, items: string[], cls: string) =>
     `<div class="summary-group ${cls}"><div class="summary-title">${title}</div><div class="summary-items">${
       items.length ? items.map((x) => `<span class="chip">${esc(x)}</span>`).join("") : '<span class="tags">—</span>'
@@ -577,7 +598,7 @@ function renderDetail(snap: UiSnapshot): void {
     ? `<div class="tags" data-crises="1">${[...relayBits, ...extraBits].map(esc).join("<br>")}</div>` : "";
   const clockDetail = (clockDetailBits.length
     ? `<div class="tags need">${clockDetailBits.map(esc).join(" · ")}</div>` : "") + crisisDetail;
-  el.innerHTML = `
+  el.innerHTML = `${tabBar}
     <div class="tags"><button type="button" data-open-needs>🌳 Needs tree &amp; suppliers</button></div>
     <div class="detail-head">
       <div class="name">
@@ -789,6 +810,8 @@ if (thrInput) {
 }
 
 $("detail").addEventListener("click", (e) => {
+  const tab = (e.target as HTMLElement).closest("[data-detail-tab]");
+  if (tab) { detailTab = tab.getAttribute("data-detail-tab") === "history" ? "history" : "details"; render(); return; }
   if ((e.target as HTMLElement).closest("[data-open-needs]")) { openWindow("needs"); openWindow("suppliers"); render(); }
 });
 $("detail").addEventListener("keydown", (e) => {

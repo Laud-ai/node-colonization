@@ -1,4 +1,5 @@
 import { applyRules, ruleNum, ruleOn, type Rules } from "./rules.js";
+import { colonyHistory, type HistoryEra } from "./events.js";
 import { clockTripsFor, survivalNeed, survivalCover, freePopulation, coveredPopulationNeed } from "./l4.js";
 import type { FlagDesign } from "./flagDesign.js";
 import { flagForColony, flagForEarth } from "./flagLineage.js";
@@ -153,6 +154,10 @@ export interface UiSnapshot {
   threatLevel: number;
   bodyLivable: Record<string, boolean>;
   routes: RouteSnap[];
+  /** 0.21.0 History tab: eras + chronicle of the selected colony (from the event log). */
+  selectedHistory: HistoryEra[];
+  /** 0.21.0 rule eventLog on (History tab has data). */
+  eventLog: boolean;
 }
 
 function snapLines(G: GameState, c: Colony): LineSnap[] {
@@ -699,6 +704,8 @@ export class GameSession {
         Moon: (G.bodyTF.Moon || 0) >= 10,
         Mars: (G.bodyTF.Mars || 0) >= 10,
       },
+      selectedHistory: selected ? colonyHistory(G, selected.id) : [],
+      eventLog: !!G.rules && ruleOn(G, "eventLog"),
     };
   }
 }

@@ -1,5 +1,7 @@
 import { tickGeopolitics } from "./l7.js";
 import * as crises from "./crises.js";
+import { colonizationPhase, tryDaughterAction } from "./colonize.js";
+import { endTurnEvents, recordIdentity } from "./events.js";
 import { ruleNum, ruleOn } from "./rules.js";
 import { tickProjects } from "./l5.js";
 import { chance, mulberry32, pick, type Rng } from "./rng.js";
@@ -761,7 +763,9 @@ function applyCultureImport(G: GameState, actor: Colony, source: TradeSource): v
   if (source.node !== "Population") return;
   const add = cultureTagFromSource(source);
   if (!actor.culture.includes(add)) {
+    const before = actor.culture.slice();
     actor.culture.push(add);
+    recordIdentity(G, actor, "culture", before, ["import"], [add], source.kind === "colony" ? { colony: source.colony } : { bloc: source.bloc.name });
     pushLog(G, `${actor.name} gains culture ${add} (permanent). Now ${actor.culture.join("/")}.`, true);
   }
 }
@@ -778,14 +782,18 @@ function blendLabel(a: string, b: string): string {
 function applyCultureDevelop(G: GameState, c: Colony, rng: Rng): void {
   if (c.culture.length <= 1 && chance(rng, 0.5)) {
     const foreign = pick(rng, CULTURE_POOL.filter((x) => !c.culture.includes(x)));
+    const before = c.culture.slice();
     c.culture.push(foreign);
+    recordIdentity(G, c, "culture", before, ["develop"], [...before, foreign]);
     pushLog(G, `${c.name} develops culture → appends ${foreign}. Now ${c.culture.join("/")}.`, true);
   } else {
     const present = c.culture.length ? c.culture.slice() : ["Local"];
     const hybrid = present.length >= 2
       ? blendLabel(present[0]!, present[1]!)
       : `${present[0]}-hybrid`;
+    const before = c.culture.slice();
     c.culture = [hybrid];
+    recordIdentity(G, c, "culture", before, ["blend"], present.slice(0, 2));
     pushLog(G, `${c.name} develops culture → blend ${hybrid}.`, true);
   }
 }
@@ -796,18 +804,23 @@ function applyIdeologyDevelop(G: GameState, c: Colony, rng: Rng): void {
   if (c.ideologyImported.length > 0) {
     const lastImp = c.ideologyImported[c.ideologyImported.length - 1]!;
     const hybrid = `${lastImp}-${tag}`;
+    const before = c.ideology.slice();
     c.ideology = [hybrid];
+    recordIdentity(G, c, "ideology", before, ["blend"], [lastImp, tag]);
     pushLog(G, `${c.name} ideology blend (import+develop): ${hybrid}.`, true);
     return;
   }
+  const beforeIdeo = c.ideology.slice();
   if (c.ideologyDevelopCount === 1) {
     // First developed Ideology beyond original: coexist (append)
     if (!c.ideology.includes(tag)) c.ideology.push(tag);
+    recordIdentity(G, c, "ideology", beforeIdeo, ["develop"], [...beforeIdeo, tag]);
     pushLog(G, `${c.name} ideology coexist: ${c.ideology.join(" / ")}.`, true);
   } else {
     // 2nd+ developed Ideology: overwrite original/majority slot (index 0)
     if (c.ideology.length === 0) c.ideology = [tag];
     else c.ideology[0] = tag;
+    recordIdentity(G, c, "ideology", beforeIdeo, ["overwrite"], beforeIdeo);
     pushLog(G, `${c.name} ideology overwrite → ${c.ideology.join(" / ")}.`, true);
   }
 }
@@ -818,7 +831,9 @@ function applyIdeologyImport(G: GameState, actor: Colony, source: TradeSource): 
   const tag = ideologyTagFromSource(source);
   if (!actor.ideologyImported.includes(tag)) actor.ideologyImported.push(tag);
   if (!actor.ideology.includes(tag)) {
+    const before = actor.ideology.slice();
     actor.ideology.push(tag);
+    recordIdentity(G, actor, "ideology", before, ["import"], [tag], source.kind === "colony" ? { colony: source.colony } : { bloc: source.bloc.name });
     pushLog(G, `${actor.name} imports ideology ${tag} (permanent). Now ${actor.ideology.join(" / ")}.`, true);
   } else {
     pushLog(G, `${actor.name} imports ideology ${tag} (already present; marked imported).`);
@@ -1488,6 +1503,8 @@ export function autoAct(G: GameState, actor: Colony, rng: Rng): void {
   for (const n of needNodes()) {
     if (trySwitch(n)) return;
   }
+  // 3a) 0.21.0 daughter colony: a big colony with a free line seeds on its body or one step out
+  if (tryDaughterAction(G, actor, rng)) { afterColonyAction(G, actor, rng); return; }
   // 3) Independent founding (0.8.1): cooldown + RP + basal/Money surplus; feed when 2+ cities
   if (isIndependent(actor) && foundingCooldownReady(G) && strainOf(actor) <= 3 && rp(actor, G.bodyTF) >= 3) {
     const liegeId = actor.liegeId || actor.id;
@@ -1757,6 +1774,7 @@ export function cleanup(G: GameState, _rng?: Rng): void {
   returnIdleBorrowedLines(G);
   crises.sweepCrises(G);
   beltMilestones(G);
+  endTurnEvents(G); // 0.21.0 event record + relation snapshot (no RNG)
   for (const c of G.colonies) {
     c.acted = false;
     c.lendAttemptsThisTurn = 0;
@@ -1800,7 +1818,7 @@ export function finishTurn(G: GameState, rng: Rng, autoPassRemaining = false): v
   tryRelationFoundSolarBloc(G, rng);
   tickProjects(G, rng, pushLog);
   tickGeopolitics(G, rng, pushLog);
-  tryFound(G, rng);
+  colonizationPhase(G, rng); // 0.21.0 (all Colonization rules off = tryFound as in 0.20.0)
   decayThreatTrack(G);
   cleanup(G, rng);
   G.turn += 1;

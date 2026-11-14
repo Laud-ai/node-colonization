@@ -5,13 +5,16 @@ import { createGame, runTurn } from "../src/engine.js";
 import { applyRules } from "../src/rules.js";
 
 test("0.9.4 default rules keep colony growth sane and refugees rare", () => {
-  for (const seed of [42, 7]) {
+  // 0.21.0: colonization waves let every Earth bloc found by ~T30, so the default band is wider;
+  // the 0.20.0 band (6–14) still holds with the 0.21.0 colonization rules off.
+  const off021 = { colonizationWaves: false, firstFoundingWave: false, daughterColonies: false };
+  for (const [patch, lo, hi] of [[{}, 8, 24], [off021, 6, 14]] as const) for (const seed of [42, 7]) {
     const rng = mulberry32(seed);
     const G = createGame(seed, rng);
-    applyRules(G);
+    applyRules(G, patch);
     for (let t = 1; t <= 60; t++) {
       runTurn(G, rng);
-      if (t === 40) assert.ok(G.colonies.length >= 6 && G.colonies.length <= 14, `T40 colonies ${G.colonies.length}`);
+      if (t === 40) assert.ok(G.colonies.length >= lo && G.colonies.length <= hi, `T40 colonies ${G.colonies.length}`);
     }
     const ref = G.log.filter((e) => /🏕 Refugees flee/.test(e.msg)).length;
     assert.ok(ref / 60 < 1.5, `refugees/turn ${ref / 60}`);

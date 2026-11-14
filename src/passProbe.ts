@@ -6,7 +6,8 @@ import { createGame, runTurn, type PassDiag } from "./engine.js";
 import { thrustOf } from "./l5.js";
 const turns = Number(process.argv[2] || 120);
 const seeds = (process.argv[3] || "42,7,99,123,5").split(",").map(Number);
-const OFF020 = { beltColonies: false, beltRichSpecialty: false, beltDepot: false, beltMilestone: false };
+const OFF021 = { colonizationWaves: false, firstFoundingWave: false, daughterColonies: false, eventLog: false };
+const OFF020 = { ...OFF021, beltColonies: false, beltRichSpecialty: false, beltDepot: false, beltMilestone: false };
 const OFF019 = { ...OFF020, relayLines: false, oxygenWars: false, nomadCamps: false, thinAirOxygen: false };
 const OFF018 = { ...OFF019, bcNeutral: false, marsFoundingMoonAlly: false, marsMoonOnlyImports: false, aiLendAllies: false, aiLogisticsLoop: false };
 const PATCHES: Record<string, Record<string, boolean | number>> = {
@@ -14,7 +15,8 @@ const PATCHES: Record<string, Record<string, boolean | number>> = {
   v0171: { ...OFF018 },
   v0180: { ...OFF019 },
   v0190: { ...OFF020 },
-  v0200: {},
+  v0200: { ...OFF021 },
+  v0210: {},
   noDepot: { beltDepot: false }, noRich: { beltRichSpecialty: false }, reach2: { beltThrustReach: 2 },
   noRelay: { relayLines: false }, noO2War: { oxygenWars: false }, noNomad: { nomadCamps: false }, noThinAir: { thinAirOxygen: false },
   noLoop: { aiLogisticsLoop: false },
