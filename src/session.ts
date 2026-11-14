@@ -1,5 +1,6 @@
 import { applyRules, ruleNum, ruleOn, type Rules } from "./rules.js";
 import { colonyHistory, type HistoryEra } from "./events.js";
+import type { GameEvent, TurnSnapshot } from "./types.js";
 import { clockTripsFor, survivalNeed, survivalCover, freePopulation, coveredPopulationNeed } from "./l4.js";
 import type { FlagDesign } from "./flagDesign.js";
 import { flagForColony, flagForEarth } from "./flagLineage.js";
@@ -158,6 +159,11 @@ export interface UiSnapshot {
   selectedHistory: HistoryEra[];
   /** 0.21.0 rule eventLog on (History tab has data). */
   eventLog: boolean;
+  /** 0.21.1 Lineage / cluster windows (rules lineageView / clusterGraph) + their sources (shared refs, not copies). */
+  lineageView: boolean; clusterGraph: boolean;
+  events: GameEvent[]; timeline: TurnSnapshot[];
+  /** 0.21.1 flag designs for Earth blocs (cluster graph). */
+  blocFlags: Record<string, FlagDesign>;
 }
 
 function snapLines(G: GameState, c: Colony): LineSnap[] {
@@ -706,6 +712,9 @@ export class GameSession {
       },
       selectedHistory: selected ? colonyHistory(G, selected.id) : [],
       eventLog: !!G.rules && ruleOn(G, "eventLog"),
+      lineageView: !!G.rules && ruleOn(G, "lineageView"), clusterGraph: !!G.rules && ruleOn(G, "clusterGraph"),
+      events: G.events ?? [], timeline: G.timeline ?? [],
+      blocFlags: Object.fromEntries(G.blocs.map((b) => [b.name, flagForEarth(b.name)])),
     };
   }
 }

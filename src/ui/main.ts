@@ -5,7 +5,8 @@ import { SiteBook } from "./colonySites.js";
 import type { GlobeMarker, GlobeRoute, GlobeView, MarkerStyle } from "./globe.js";
 import { NODE_COLORS } from "../nodes.js";
 import { SPECIALTY_CODE } from "./pinIcon.js";
-import { initWindows, openWindow, isOpen } from "./windows.js";
+import { initWindows, openWindow, isOpen, setAvailable } from "./windows.js";
+import { lineageHtml, lineageUi, ClusterView } from "./historyViews.js";
 import { buildLegend } from "./legend.js";
 import { needsTreeHtml, suppliersHtml } from "./needsView.js";
 import type { NodeType } from "../types.js";
@@ -194,6 +195,7 @@ function render(): void {
   renderNeeds(snap);
   renderSuppliers(snap);
   renderLogistics(snap);
+  renderHistoryViews(snap);
   renderMoves(snap);
   renderLog(snap);
   ($("btnAuto") as HTMLButtonElement).disabled = !snap.actingId;
@@ -624,6 +626,33 @@ function renderDetail(snap: UiSnapshot): void {
     <table><thead><tr><th>Node</th><th>Extra</th><th>Deps</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="3" class="tags">No extras.</td></tr>`}</tbody></table>`;
 }
+
+// 0.21.1 Lineage + Cluster graph windows (rules lineageView / clusterGraph; off = 0.21.0, windows hidden)
+let clusterView: ClusterView | null = null;
+function renderHistoryViews(snap: UiSnapshot): void {
+  setAvailable("lineage", snap.lineageView);
+  setAvailable("cluster", snap.clusterGraph);
+  if (snap.lineageView && isOpen("lineage")) $("lineage").innerHTML = lineageHtml(snap);
+  if (snap.clusterGraph) {
+    if (!clusterView) clusterView = new ClusterView($("cluster"), (id) => { requireSession().select(id); render(); });
+    if (isOpen("cluster")) clusterView.update(snap);
+    else clusterView.stop();
+  }
+}
+$("lineage").addEventListener("click", (e) => {
+  const t = e.target as HTMLElement;
+  const kind = t.closest("[data-lineage-kind]")?.getAttribute("data-lineage-kind");
+  const scope = t.closest("[data-lineage-scope]")?.getAttribute("data-lineage-scope");
+  const more = t.closest("[data-lineage-more]")?.getAttribute("data-lineage-more");
+  const pick = t.closest("[data-select-colony]")?.getAttribute("data-select-colony");
+  if (kind === "ideology" || kind === "culture") { lineageUi.kind = kind; lineageUi.pop = null; }
+  else if (scope === "all" || scope === "colony") { lineageUi.scope = scope; lineageUi.pop = null; }
+  else if (more) lineageUi.pop = lineageUi.pop === more ? null : more;
+  else if (t.closest("[data-lineage-pop-close]")) lineageUi.pop = null;
+  else if (pick) { requireSession().select(pick); lineageUi.scope = "colony"; lineageUi.pop = null; }
+  else return;
+  render();
+});
 
 function commitEditable(el: HTMLElement): void {
   const s = requireSession();

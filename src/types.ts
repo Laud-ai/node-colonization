@@ -309,5 +309,5 @@ export interface GameEvent {
 export interface TurnSnapshot {
   turn: number;
   alliances: Record<string, string>;
-  cols: { id: string; name: string; patron: string; liege: string | null; body: Body; level: number; ideology: string[]; culture: string[]; trade: string[]; war: boolean }[];
+  cols: { id: string; name: string; patron: string; liege: string | null; body: Body; level: number; ideology: string[]; culture: string[]; trade: string[]; war: boolean; fervor?: number; hoarder?: boolean }[];
 }

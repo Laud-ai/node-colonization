@@ -863,3 +863,45 @@ th {
 .history-era li[data-ev="revolution"], .history-era li[data-ev="independence"], .history-era li[data-ev="war"], .history-era li[data-ev="seize"] { color: #fca5a5; }
 .history-era li[data-ev="found"], .history-era li[data-ev="wave"] { color: #86efac; }
 .history-era li[data-ev="ideology"], .history-era li[data-ev="culture"] { color: #c4b5fd; }
+
+/* 0.21.1 Lineage window */
+.lin-tabs { margin-bottom: 4px; }
+.lin-scope { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.lin-scope button, .lin-more { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; border-radius: 4px; padding: 1px 6px; cursor: pointer; font-size: 0.85em; }
+.lin-scope button.on { border-color: #a78bfa; color: #ede9fe; }
+.lin-scope button:disabled { opacity: 0.5; cursor: default; }
+.lin-path { margin-bottom: 4px; }
+.lin-canvas { position: relative; }
+.lin-svg { position: absolute; left: 0; top: 0; pointer-events: auto; }
+.lin-edge { fill: none; stroke: #64748b; stroke-width: 1.5; marker-end: url(#linArrow); }
+.lin-edge.blend { stroke: #a78bfa; stroke-dasharray: 5 3; }
+.lin-turn { position: absolute; left: 0; width: 40px; font-size: 0.75em; color: #64748b; font-variant-numeric: tabular-nums; }
+.lin-node { position: absolute; box-sizing: border-box; height: 52px; overflow: hidden; background: #0f172a; border: 1px solid #334155; border-left: 3px solid #64748b; border-radius: 5px; padding: 2px 5px; font-size: 0.78em; line-height: 1.25; }
+.lin-node.blend { border-left-color: #a78bfa; }
+.lin-tag { font-weight: 600; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lin-parents { font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #c4b5fd; }
+.lin-sites { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lin-col { background: none; border: none; padding: 0; color: #93c5fd; cursor: pointer; font: inherit; }
+.lin-col:hover { text-decoration: underline; }
+.lin-col.gone { color: #64748b; cursor: default; }
+.lin-pop { border: 1px solid #334155; border-radius: 5px; padding: 4px 6px; margin-bottom: 6px; background: #111827; max-height: 160px; overflow: auto; font-size: 0.85em; }
+.lin-pop button[data-lineage-pop-close] { float: right; background: none; border: none; color: #94a3b8; cursor: pointer; }
+/* 0.21.1 Cluster graph window */
+.cl-controls { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+.cl-controls input[type=range] { flex: 1; min-width: 80px; }
+#clusterPlay { width: 28px; }
+.cl-svg { width: 100%; aspect-ratio: 1 / 1; background: radial-gradient(circle, #0f172a 0%, #070b16 100%); border: 1px solid #1e293b; border-radius: 6px; display: block; }
+.cl-frame { opacity: 0.9; }
+.cl-frame.bloc { stroke: #f8fafc; stroke-width: 1.2; }
+.cl-colony { cursor: pointer; }
+.cl-colony.independent .cl-frame { fill: #e2e8f0 !important; }
+.cl-colony.selected .cl-frame { stroke: #facc15; stroke-width: 2.5; }
+.cl-bloc-label { fill: #cbd5e1; font-size: 9px; text-anchor: middle; pointer-events: none; }
+.cl-edge { stroke-width: 1; }
+.cl-edge.ally { stroke: rgba(148, 163, 184, 0.25); }
+.cl-edge.war { stroke: rgba(248, 113, 113, 0.55); stroke-dasharray: 4 3; }
+.cl-edge.patron { stroke: rgba(250, 204, 21, 0.5); }
+.cl-legend { margin-top: 4px; font-size: 0.75em; }
+.lin-more { float: right; margin-left: 4px; padding: 0 4px; font-size: 0.85em; }
+.lin-edge.adopt { stroke: #475569; stroke-dasharray: 2 3; }
+.lin-own { color: #cbd5e1; }

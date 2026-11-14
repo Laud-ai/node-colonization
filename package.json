@@ -1,6 +1,6 @@
 {
   "name": "node-colonization-l0",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "private": true,
   "type": "module",
   "description": "Node Colonization \u2014 L0\u2013L7 + 3D Moon/Mars globes (0.13.0); rules/version lobby",

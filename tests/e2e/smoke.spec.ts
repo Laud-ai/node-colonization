@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
-test("lobby → one turn → version snapshot iframe", async ({ page }) => {
+test("lobby → one turn → version snapshot iframe", async ({ page, browserName }) => {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
   page.on("console", (msg) => {
@@ -39,15 +39,15 @@ test("lobby → one turn → version snapshot iframe", async ({ page }) => {
   await expect(page.locator("#needsTree .nt-node").first()).toBeVisible();
   expect(await page.locator('#needsTree .nt-node[data-state="missing"]').count()).toBe(0);
   expect(await page.locator('#needsTree .nt-node[data-node="Water"]').getAttribute("data-state")).toMatch(/expand|developed|imported|specialty/);
-  fs.mkdirSync(path.resolve("out/smoke"), { recursive: true });
-  await page.locator('.win[data-win="needs"]').screenshot({ path: path.resolve("out/smoke/needs-tree-fresh.png") });
+  fs.mkdirSync(path.resolve(browserName === "firefox" ? "out/smoke/firefox" : "out/smoke"), { recursive: true });
+  await page.locator('.win[data-win="needs"]').screenshot({ path: path.join(path.resolve(browserName === "firefox" ? "out/smoke/firefox" : "out/smoke"), "needs-tree-fresh.png") });
 
   // Advance one turn
   await page.locator("#btnEnd").click();
   await expect(page.locator("#turn")).toHaveText("2");
 
   // Screenshot after one turn
-  const smokeDir = path.resolve("out/smoke");
+  const smokeDir = path.resolve(browserName === "firefox" ? "out/smoke/firefox" : "out/smoke");
   fs.mkdirSync(smokeDir, { recursive: true });
   await page.screenshot({ path: path.join(smokeDir, "smoke.png"), fullPage: true });
 

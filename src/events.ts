@@ -44,6 +44,8 @@ function snapshotOf(G: GameState): TurnSnapshot {
       ideology: c.ideology.slice(), culture: c.culture.slice(),
       trade: [...new Set(c.logisticsLines.filter((l) => l.route?.sourceKind === "colony").map((l) => l.route!.sourceId))],
       war: (c.proxyAgitation || 0) > 0 || (G.__warThisTurn?.has(c.id) ?? false),
+      // 0.21.1 cluster graph inputs (record only)
+      fervor: c.fervor ?? 0, hoarder: (c.hoarderUntil ?? 0) >= G.turn,
     })),
   };
 }
