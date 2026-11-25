@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { useDockedLayout } from "./docked.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -11,6 +12,7 @@ test("lobby → one turn → version snapshot iframe", async ({ page, browserNam
   page.on("pageerror", (err) => pageErrors.push(String(err)));
 
   await page.goto("/");
+  await useDockedLayout(page);
 
   // Setup lobby visible
   await expect(page.locator("#setupScreen")).toBeVisible();

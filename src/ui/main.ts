@@ -5,7 +5,7 @@ import { SiteBook } from "./colonySites.js";
 import type { GlobeMarker, GlobeRoute, GlobeView, MarkerStyle } from "./globe.js";
 import { NODE_COLORS } from "../nodes.js";
 import { SPECIALTY_CODE } from "./pinIcon.js";
-import { initWindows, openWindow, isOpen, setAvailable } from "./windows.js";
+import { initWindows, openWindow, isOpen, setAvailable, setFloating } from "./windows.js";
 import { lineageHtml, lineageUi, ClusterView } from "./historyViews.js";
 import { buildLegend } from "./legend.js";
 import { needsTreeHtml, suppliersHtml } from "./needsView.js";
@@ -167,6 +167,7 @@ function requireSession(): GameSession {
 function render(): void {
   if (uiPhase !== "playing" || !session) return;
   const snap = session.snapshot();
+  setFloating(snap.floatingWindows);
   $("turn").textContent = String(snap.turn);
   $("seed").textContent = String(snap.seed);
   $("phase").textContent = snap.phase;

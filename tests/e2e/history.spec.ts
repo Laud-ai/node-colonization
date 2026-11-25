@@ -1,5 +1,6 @@
 // 0.21.0: colony History tab — template chronicle grouped into eras (from the deterministic event log).
 import { test, expect } from "@playwright/test";
+import { useDockedLayout } from "./docked.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -9,6 +10,7 @@ test("0.21.0 History tab: eras + chronicle for a colony", async ({ page, browser
   page.on("pageerror", (err) => pageErrors.push(String(err)));
   const dir = path.resolve(browserName === "firefox" ? "out/smoke/firefox" : "out/smoke"); fs.mkdirSync(dir, { recursive: true });
   await page.goto("/");
+  await useDockedLayout(page);
   await page.locator("#setupSeed").fill("42");
   await page.locator("#btnBeginSim").click();
   await expect(page.locator("#playScreen")).toBeVisible();

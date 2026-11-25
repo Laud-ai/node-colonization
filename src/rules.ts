@@ -112,6 +112,8 @@ export const RULE_DEFS: RuleDef[] = [
     help: "Top-to-bottom family trees of ideologies and cultures from the event log: shifts and blends (both parents), which colonies and when; with a colony picked, only its own path. UI only; needs the event log." },
   { id: "clusterGraph", label: "Cluster graph window with turn replay (0.21.1)", group: "History", kind: "bool", def: true, legacy: false,
     help: "Force layout of Earth bloc and colony flags per turn from the relation snapshots: pulled by patron / bloc / alliance / trade / shared ideology, pushed by wars, seizures, rival alliances and hoarders; colonies drift from their nation as fervor rises or after independence. Replay slider with play/pause. UI only; needs the event log." },
+  { id: "floatingWindows", label: "Floating windows over a full-screen map (0.22.0)", group: "UI", kind: "bool", def: true, legacy: false,
+    help: "Grand-strategy layout: the 3D map fills the screen; a menu bar opens / closes every window; windows float over the map — drag by the title bar, resize from any edge or corner, minimize, close, click to bring to front. Layout (position, size, open, z-order) is remembered; Reset layout in the menu bar. Off = the 0.14–0.21 docked side windows. UI only." },
   { id: "l5Thrust", label: "L5 Thrust: Thrust gives Mars reach without lunar basis", group: "L5 Projects / Thrust", kind: "bool", def: true, legacy: false,
     help: "Any same-nation colony with Thrust extras (or an Orbital Shipyard) opens Mars founding." },
   { id: "l5Projects", label: "L5 Projects (rule-changing megaprojects)", group: "L5 Projects / Thrust", kind: "bool", def: true, legacy: false,

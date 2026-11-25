@@ -161,6 +161,8 @@ export interface UiSnapshot {
   eventLog: boolean;
   /** 0.21.1 Lineage / cluster windows (rules lineageView / clusterGraph) + their sources (shared refs, not copies). */
   lineageView: boolean; clusterGraph: boolean;
+  /** 0.22.0 rule floatingWindows (UI only). */
+  floatingWindows: boolean;
   events: GameEvent[]; timeline: TurnSnapshot[];
   /** 0.21.1 flag designs for Earth blocs (cluster graph). */
   blocFlags: Record<string, FlagDesign>;
@@ -712,6 +714,7 @@ export class GameSession {
       },
       selectedHistory: selected ? colonyHistory(G, selected.id) : [],
       eventLog: !!G.rules && ruleOn(G, "eventLog"),
+      floatingWindows: !!G.rules && ruleOn(G, "floatingWindows"),
       lineageView: !!G.rules && ruleOn(G, "lineageView"), clusterGraph: !!G.rules && ruleOn(G, "clusterGraph"),
       events: G.events ?? [], timeline: G.timeline ?? [],
       blocFlags: Object.fromEntries(G.blocs.map((b) => [b.name, flagForEarth(b.name)])),

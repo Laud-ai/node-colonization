@@ -905,3 +905,47 @@ th {
 .lin-more { float: right; margin-left: 4px; padding: 0 4px; font-size: 0.85em; }
 .lin-edge.adopt { stroke: #475569; stroke-dasharray: 2 3; }
 .lin-own { color: #cbd5e1; }
+
+/* 0.22.0 Floating windows (rule floatingWindows): full-screen map, menu bar, free windows */
+.win-menubar { display: none; }
+.float-layer { display: none; }
+.win-rs { display: none; }
+.play-screen.floating .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: rgba(8, 11, 22, 0.88); backdrop-filter: blur(4px); border-bottom: 1px solid var(--line); flex-wrap: wrap; row-gap: 4px; }
+.play-screen.floating .topbar .win-menu-wrap, .play-screen.floating .tray, .play-screen.floating .dock { display: none !important; }
+.play-screen.floating .win-menubar { display: flex; flex-wrap: wrap; gap: 3px; flex-basis: 100%; }
+.win-menubar .menu-win, .win-menubar .menu-reset { font-size: 11px; padding: 2px 9px; border-radius: 3px; background: #111827; border: 1px solid #334155; color: #94a3b8; letter-spacing: 0.03em; }
+.win-menubar .menu-win.on { background: #3b2f0b; border-color: var(--gold); color: #fde68a; }
+.win-menubar .menu-win.min { border-color: #a16207; color: #fcd34d; border-style: dashed; }
+.win-menubar .menu-reset { margin-left: auto; }
+.play-screen.floating .workspace { position: fixed; inset: 0; z-index: 0; }
+.play-screen.floating .map-stage { position: absolute; inset: 0; }
+.play-screen.floating .map-stage .globe-card { margin: 0; border: none; border-radius: 0; padding-top: var(--menubar-h, 92px); }
+.play-screen.floating .announcements { top: calc(var(--menubar-h, 92px) + 48px); }
+.play-screen.floating .float-layer { display: block; position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+.play-screen.floating .float-layer .win { position: absolute; pointer-events: auto; box-shadow: 0 10px 30px #000a; background: rgba(15, 20, 36, 0.96); min-width: 0; }
+.play-screen.floating .float-layer .win .win-bar { cursor: move; user-select: none; touch-action: none; }
+.play-screen.floating .float-layer .win .win-btns [data-win-act="side"] { display: none; }
+.play-screen.floating .float-layer .win .win-body { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+.play-screen.floating .float-layer .win.win-min .win-body, .play-screen.floating .float-layer .win.win-min .win-rs { display: none; }
+.play-screen.floating .float-layer .win.win-dragging, .play-screen.floating .float-layer .win.win-resizing { opacity: 0.92; }
+.play-screen.floating .float-layer .win-rs { display: block; position: absolute; z-index: 2; touch-action: none; }
+.win-rs-n, .win-rs-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.win-rs-n { top: -3px; } .win-rs-s { bottom: -3px; }
+.win-rs-e, .win-rs-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.win-rs-e { right: -3px; } .win-rs-w { left: -3px; }
+.win-rs-ne, .win-rs-nw, .win-rs-se, .win-rs-sw { width: 12px; height: 12px; }
+.win-rs-ne { top: -4px; right: -4px; cursor: nesw-resize; } .win-rs-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.win-rs-nw { top: -4px; left: -4px; cursor: nwse-resize; } .win-rs-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.win-rs-se::after { content: ""; position: absolute; right: 5px; bottom: 5px; width: 7px; height: 7px; border-right: 2px solid #64748b; border-bottom: 2px solid #64748b; }
+/* contents reflow inside a floating window */
+.play-screen.floating .float-layer .win table { width: 100%; }
+.play-screen.floating .float-layer .win .summary-items, .play-screen.floating .float-layer .win .toolbar { flex-wrap: wrap; }
+.play-screen.floating .float-layer .win.w-narrow .detail-tabs button { padding: 3px 6px; }
+.play-screen.floating .float-layer .win[data-win="cluster"] .win-body { display: flex; flex-direction: column; }
+.play-screen.floating .float-layer .win[data-win="cluster"] .cluster { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.play-screen.floating .float-layer .win[data-win="cluster"] .cl-svg { flex: 1; min-height: 120px; aspect-ratio: auto; height: auto; }
+.play-screen.floating .float-layer .win[data-win="cluster"] .cl-legend { flex: none; }
+.play-screen.floating .float-layer .win[data-win="needs"] .needs-tree svg { max-height: none; }
+/* keep the globe bar (view modes, pins, routes, legend) between the default window columns */
+.play-screen.floating .globe-bar { justify-content: center; flex-wrap: wrap; padding: 2px calc(min(360px, 26vw) + 20px) 0; }
+.play-screen.floating .globe-bar h2 { display: none; }
